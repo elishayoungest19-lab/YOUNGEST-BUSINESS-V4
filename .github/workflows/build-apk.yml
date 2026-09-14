@@ -6,13 +6,17 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le dépôt
+
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -21,49 +25,120 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Installer Gradle 8.9
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+
       - name: Installer Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Décompresser le projet V4
+      - name: Installer les composants Android necessaires
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          yes | sdkmanager --licenses > /dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Decompresser le projet YOUNGEST'S BUSINESS
+        shell: bash
+        run: |
+          set -e
+
+          echo "Recherche du fichier ZIP..."
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" -print -quit)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERREUR : aucun fichier ZIP trouvé."
+            echo "ERREUR : aucun fichier ZIP trouve."
             exit 1
           fi
 
-          echo "ZIP trouvé : $ZIP_FILE"
+          echo "ZIP trouve : $ZIP_FILE"
 
-          unzip -o "$ZIP_FILE" -d extracted
+          rm -rf extracted
+          mkdir -p extracted
 
-          if [ -f "extracted/gradlew" ]; then
-            cp -a extracted/. .
-          else
-            PROJECT_DIR=$(find extracted -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          unzip -q -o "$ZIP_FILE" -d extracted
 
-            if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/gradlew" ]; then
-              echo "ERREUR : projet Android introuvable dans le ZIP."
-              find extracted -maxdepth 3 -type f | sort
-              exit 1
-            fi
+          echo "Verification de la structure du projet..."
 
-            cp -a "$PROJECT_DIR"/. .
+          if [ ! -f "extracted/settings.gradle" ]; then
+            echo "ERREUR : settings.gradle est introuvable."
+            echo "Contenu extrait :"
+            find extracted -maxdepth 4 -type f | sort
+            exit 1
           fi
 
-          chmod +x gradlew
+          if [ ! -f "extracted/build.gradle" ]; then
+            echo "ERREUR : build.gradle est introuvable."
+            exit 1
+          fi
 
-          echo "Structure du projet :"
+          if [ ! -f "extracted/app/build.gradle" ]; then
+            echo "ERREUR : app/build.gradle est introuvable."
+            exit 1
+          fi
+
+          if [ ! -f "extracted/app/src/main/AndroidManifest.xml" ]; then
+            echo "ERREUR : AndroidManifest.xml est introuvable."
+            exit 1
+          fi
+
+          echo "Projet Android detecte correctement."
+
+          rm -rf app gradle
+          rm -f build.gradle settings.gradle gradle.properties
+
+          cp -a extracted/app .
+          cp -a extracted/gradle .
+          cp -a extracted/build.gradle .
+          cp -a extracted/settings.gradle .
+          cp -a extracted/gradle.properties .
+
+          echo "Structure finale du projet :"
           ls -la
 
+          echo "Contenu du dossier app :"
+          find app -maxdepth 3 -type f | sort
+
+      - name: Verifier Gradle
+        shell: bash
+        run: |
+          set -e
+          gradle --version
+
       - name: Nettoyer le projet
-        run: ./gradlew clean
+        shell: bash
+        run: |
+          set -e
+          gradle --no-daemon clean
 
       - name: Construire l'APK
-        run: ./gradlew assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set -e
+          gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verifier que l'APK existe
+        shell: bash
+        run: |
+          set -e
+
+          APK_FILE=$(find app/build/outputs/apk/debug -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK_FILE" ]; then
+            echo "ERREUR : aucun APK n'a ete genere."
+            exit 1
+          fi
+
+          echo "APK genere avec succes :"
+          ls -lh "$APK_FILE"
 
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
