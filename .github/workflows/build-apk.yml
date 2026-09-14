@@ -10,6 +10,7 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
 
@@ -23,19 +24,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Installer Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Installer Gradle 8.9
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.9'
 
-      - name: Installer Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Installer les composants Android nécessaires
         shell: bash
         run: |
           set -e
+
           yes | sdkmanager --licenses > /dev/null || true
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -46,12 +49,12 @@ jobs:
         run: |
           set -e
 
-          echo "Recherche du fichier ZIP..."
+          echo "Recherche du fichier V6..."
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V5-APK-CORRIGE.zip"
+          ZIP_FILE="./YOUNGEST-BUSINESS-V6-AJOUT-PRET-CLIENT.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier ZIP V5 est introuvable."
+            echo "ERREUR : le fichier V6 est introuvable."
             ls -la
             exit 1
           fi
@@ -67,7 +70,7 @@ jobs:
 
           if [ ! -f "extracted/settings.gradle" ]; then
             echo "ERREUR : settings.gradle est introuvable."
-            find extracted -maxdepth 3 -type f | sort
+            find extracted -maxdepth 4 -type f | sort
             exit 1
           fi
 
@@ -77,13 +80,18 @@ jobs:
           cp -a extracted/build.gradle .
           cp -a extracted/settings.gradle .
 
-          if [ -f extracted/gradle.properties ]; then
+          if [ -d "extracted/gradle" ]; then
+            cp -a extracted/gradle .
+          fi
+
+          if [ -f "extracted/gradle.properties" ]; then
             cp -a extracted/gradle.properties .
           fi
 
           echo "Projet préparé."
 
       - name: Vérifier Gradle
+        shell: bash
         run: |
           gradle --version
           java -version
@@ -97,6 +105,7 @@ jobs:
           gradle --no-daemon assembleDebug --stacktrace
 
       - name: Vérifier que l'APK existe
+        shell: bash
         run: |
           ls -lh app/build/outputs/apk/debug/
           test -f app/build/outputs/apk/debug/app-debug.apk
