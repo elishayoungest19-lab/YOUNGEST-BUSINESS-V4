@@ -15,6 +15,7 @@ jobs:
       contents: read
 
     steps:
+
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
@@ -44,57 +45,67 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Décompresser le projet YOUNGEST'S BUSINESS
+      - name: Décompresser le projet YOUNGEST'S BUSINESS V6
         shell: bash
         run: |
           set -e
 
-          echo "Recherche du fichier V6..."
+          echo "Recherche automatique du ZIP V6..."
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V6-AJOUT-PRET-CLIENT.zip"
+          ZIP_FILE=$(find . -maxdepth 1 -type f \
+            -name "YOUNGEST-BUSINESS-V6-*.zip" \
+            -print -quit)
 
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier V6 est introuvable."
-            ls -la
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERREUR : aucun ZIP V6 trouvé."
+            echo "Fichiers présents dans le dépôt :"
+            ls -lah
             exit 1
           fi
 
-          echo "ZIP trouvé : $ZIP_FILE"
+          echo "ZIP V6 trouvé : $ZIP_FILE"
 
           rm -rf extracted
           mkdir -p extracted
 
           unzip -q -o "$ZIP_FILE" -d extracted
 
-          echo "Vérification de la structure du projet..."
+          echo "Vérification de la structure..."
 
-          if [ ! -f "extracted/settings.gradle" ]; then
-            echo "ERREUR : settings.gradle est introuvable."
-            find extracted -maxdepth 4 -type f | sort
-            exit 1
+          if [ -f extracted/settings.gradle ]; then
+            PROJECT_ROOT="extracted"
+          else
+            PROJECT_ROOT=$(find extracted -name settings.gradle \
+              -type f -print -quit | xargs dirname)
+
+            if [ -z "$PROJECT_ROOT" ]; then
+              echo "ERREUR : settings.gradle introuvable."
+              find extracted -maxdepth 4 -type f | sort
+              exit 1
+            fi
           fi
 
-          echo "Projet Android détecté correctement."
+          echo "Projet Android trouvé dans : $PROJECT_ROOT"
 
-          cp -a extracted/app .
-          cp -a extracted/build.gradle .
-          cp -a extracted/settings.gradle .
+          cp -a "$PROJECT_ROOT/app" .
 
-          if [ -d "extracted/gradle" ]; then
-            cp -a extracted/gradle .
+          if [ -d "$PROJECT_ROOT/gradle" ]; then
+            cp -a "$PROJECT_ROOT/gradle" .
           fi
 
-          if [ -f "extracted/gradle.properties" ]; then
-            cp -a extracted/gradle.properties .
+          cp -a "$PROJECT_ROOT/build.gradle" .
+          cp -a "$PROJECT_ROOT/settings.gradle" .
+
+          if [ -f "$PROJECT_ROOT/gradle.properties" ]; then
+            cp -a "$PROJECT_ROOT/gradle.properties" .
           fi
 
-          echo "Projet préparé."
+          echo "Projet Android préparé correctement."
 
       - name: Vérifier Gradle
-        shell: bash
         run: |
           gradle --version
-          java -version
+          java --version
 
       - name: Nettoyer le projet
         run: |
@@ -105,7 +116,6 @@ jobs:
           gradle --no-daemon assembleDebug --stacktrace
 
       - name: Vérifier que l'APK existe
-        shell: bash
         run: |
           ls -lh app/build/outputs/apk/debug/
           test -f app/build/outputs/apk/debug/app-debug.apk
