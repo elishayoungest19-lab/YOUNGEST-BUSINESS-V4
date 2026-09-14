@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS APK
+concurrency: name: Build YOUNGEST'S BUSINESS APK
 
 on:
   workflow_dispatch:
