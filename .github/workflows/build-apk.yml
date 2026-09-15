@@ -39,14 +39,38 @@ jobs:
       - name: "Installer Android SDK"
         uses: android-actions/setup-android@v3
         with:
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: ""
 
 
       # ---------------------------------------------------------
-      # 4. INSTALLER GRADLE 8.9
+      # 4. INSTALLER LES COMPOSANTS ANDROID
+      # ---------------------------------------------------------
+      - name: "Installer les composants Android nécessaires"
+        shell: bash
+        run: |
+          set -e
+
+          echo "Acceptation des licences Android..."
+
+          yes | sdkmanager --licenses > /dev/null || true
+
+          echo "Installation de platform-tools..."
+
+          sdkmanager "platform-tools"
+
+          echo "Installation de la plateforme Android 35..."
+
+          sdkmanager "platforms;android-35"
+
+          echo "Installation de Build Tools 35.0.0..."
+
+          sdkmanager "build-tools;35.0.0"
+
+          echo "Composants Android installés avec succès."
+
+
+      # ---------------------------------------------------------
+      # 5. INSTALLER GRADLE 8.9
       # ---------------------------------------------------------
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
@@ -55,7 +79,7 @@ jobs:
 
 
       # ---------------------------------------------------------
-      # 5. DÉCOMPRESSER LE PROJET V10
+      # 6. DÉCOMPRESSER LE PROJET V10 FIREBASE
       # ---------------------------------------------------------
       - name: "Décompresser le projet V10 Firebase"
         shell: bash
@@ -81,11 +105,12 @@ jobs:
           unzip -o "$ZIP_FILE" -d ./v10-extracted
 
           echo "Contenu extrait :"
+
           find ./v10-extracted -maxdepth 3 -type f | head -100
 
 
       # ---------------------------------------------------------
-      # 6. TROUVER LE PROJET ANDROID
+      # 7. TROUVER ET PRÉPARER LE PROJET ANDROID
       # ---------------------------------------------------------
       - name: "Préparer le projet Android"
         shell: bash
@@ -107,18 +132,25 @@ jobs:
             PROJECT_DIR="./v10-extracted"
 
           else
-            PROJECT_DIR=$(find ./v10-extracted -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit | xargs -r dirname)
+
+            PROJECT_DIR=$(find ./v10-extracted \
+              -type f \
+              \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+              -print -quit | xargs -r dirname)
 
             if [ -z "$PROJECT_DIR" ]; then
               echo "ERREUR : projet Android introuvable."
+
               find ./v10-extracted -maxdepth 4 -type f
+
               exit 1
             fi
+
           fi
 
           echo "Projet Android trouvé : $PROJECT_DIR"
 
-          echo "Vérification des fichiers Firebase..."
+          echo "Vérification de google-services.json..."
 
           test -f "$PROJECT_DIR/app/google-services.json"
 
@@ -126,8 +158,16 @@ jobs:
 
           echo "Vérification du projet Android..."
 
-          test -f "$PROJECT_DIR/app/build.gradle" || \
-          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          if [ -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "app/build.gradle trouvé."
+
+          elif [ -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "app/build.gradle.kts trouvé."
+
+          else
+            echo "ERREUR : fichier Gradle du module app introuvable."
+            exit 1
+          fi
 
           echo "Projet Android prêt."
 
@@ -135,7 +175,7 @@ jobs:
 
 
       # ---------------------------------------------------------
-      # 7. PRÉPARER LA CLÉ DE SIGNATURE
+      # 8. PRÉPARER LA CLÉ DE SIGNATURE
       # ---------------------------------------------------------
       - name: "Préparer la clé de signature"
         shell: bash
@@ -159,7 +199,7 @@ jobs:
 
 
       # ---------------------------------------------------------
-      # 8. CONSTRUIRE L'APK V10 FIREBASE
+      # 9. CONSTRUIRE L'APK V10 FIREBASE
       # ---------------------------------------------------------
       - name: "Construire l'APK V10 Firebase"
         shell: bash
@@ -175,17 +215,24 @@ jobs:
           chmod +x gradlew
 
           echo "Nettoyage du projet..."
+
           ./gradlew clean
 
           echo "Compilation de l'APK Release Firebase..."
+
           ./gradlew assembleRelease
 
           echo "APK généré :"
-          find app/build/outputs/apk/release -type f -maxdepth 2 -print -exec ls -lh {} \;
+
+          find app/build/outputs/apk/release \
+            -type f \
+            -maxdepth 2 \
+            -print \
+            -exec ls -lh {} \;
 
 
       # ---------------------------------------------------------
-      # 9. VÉRIFIER L'APK
+      # 10. VÉRIFIER L'APK
       # ---------------------------------------------------------
       - name: "Vérifier l'APK"
         shell: bash
@@ -197,6 +244,7 @@ jobs:
           test -f "$APK"
 
           echo "APK trouvé :"
+
           ls -lh "$APK"
 
           echo "Vérification de la signature..."
@@ -209,7 +257,7 @@ jobs:
 
 
       # ---------------------------------------------------------
-      # 10. PUBLIER L'APK
+      # 11. PUBLIER L'APK
       # ---------------------------------------------------------
       - name: "Publier l'APK V10 Firebase"
         uses: actions/upload-artifact@v4
