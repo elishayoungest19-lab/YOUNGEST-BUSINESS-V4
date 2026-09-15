@@ -1,4 +1,4 @@
-name: "Build YOUNGEST'S BUSINESS V10 Firebase APK"
+name: "Build YOUNGEST’S BUSINESS V10 Firebase APK"
 
 on:
   workflow_dispatch:
@@ -15,39 +15,48 @@ jobs:
       contents: read
 
     steps:
+
+      # ---------------------------------------------------------
+      # 1. RÉCUPÉRER LE DÉPÔT
+      # ---------------------------------------------------------
       - name: "Récupérer le dépôt"
         uses: actions/checkout@v4
 
+
+      # ---------------------------------------------------------
+      # 2. INSTALLER JAVA 17
+      # ---------------------------------------------------------
       - name: "Installer Java 17"
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
+
+      # ---------------------------------------------------------
+      # 3. INSTALLER ANDROID SDK
+      # ---------------------------------------------------------
       - name: "Installer Android SDK"
         uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
 
-      - name: "Installer les composants Android nécessaires"
-        shell: bash
-        run: |
-          set -e
 
-          echo "Acceptation des licences Android..."
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-
-          echo "Installation des composants Android..."
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-          echo "Composants Android installés."
-
+      # ---------------------------------------------------------
+      # 4. INSTALLER GRADLE 8.9
+      # ---------------------------------------------------------
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
+
+      # ---------------------------------------------------------
+      # 5. DÉCOMPRESSER LE PROJET V10
+      # ---------------------------------------------------------
       - name: "Décompresser le projet V10 Firebase"
         shell: bash
         run: |
@@ -55,9 +64,10 @@ jobs:
 
           ZIP_FILE="./YOUNGEST-BUSINESS-V10-FIREBASE-PREPARE-1.zip"
 
-          echo "Recherche du fichier V10..."
+          echo "Recherche du fichier V10 Firebase..."
+
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier V10 est introuvable."
+            echo "ERREUR : le fichier V10 Firebase est introuvable."
             echo "Fichiers présents dans le dépôt :"
             ls -lah
             exit 1
@@ -67,27 +77,66 @@ jobs:
           ls -lh "$ZIP_FILE"
 
           echo "Décompression du projet V10..."
-          unzip -o "$ZIP_FILE" -d ./v10-project
 
-          echo "Contenu du projet V10 :"
-          ls -lah ./v10-project
+          unzip -o "$ZIP_FILE" -d ./v10-extracted
 
+          echo "Contenu extrait :"
+          find ./v10-extracted -maxdepth 3 -type f | head -100
+
+
+      # ---------------------------------------------------------
+      # 6. TROUVER LE PROJET ANDROID
+      # ---------------------------------------------------------
       - name: "Préparer le projet Android"
         shell: bash
         run: |
           set -e
 
-          cd ./v10-project
+          echo "Recherche du projet Android..."
 
-          echo "Vérification du fichier Firebase..."
-          test -f app/google-services.json
+          if [ -d "./v10-extracted/v10-project" ]; then
+            PROJECT_DIR="./v10-extracted/v10-project"
+
+          elif [ -d "./v10-extracted/YOUNGEST-BUSINESS-V10-FIREBASE" ]; then
+            PROJECT_DIR="./v10-extracted/YOUNGEST-BUSINESS-V10-FIREBASE"
+
+          elif [ -f "./v10-extracted/settings.gradle" ]; then
+            PROJECT_DIR="./v10-extracted"
+
+          elif [ -f "./v10-extracted/settings.gradle.kts" ]; then
+            PROJECT_DIR="./v10-extracted"
+
+          else
+            PROJECT_DIR=$(find ./v10-extracted -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit | xargs -r dirname)
+
+            if [ -z "$PROJECT_DIR" ]; then
+              echo "ERREUR : projet Android introuvable."
+              find ./v10-extracted -maxdepth 4 -type f
+              exit 1
+            fi
+          fi
+
+          echo "Projet Android trouvé : $PROJECT_DIR"
+
+          echo "Vérification des fichiers Firebase..."
+
+          test -f "$PROJECT_DIR/app/google-services.json"
+
+          echo "google-services.json trouvé."
 
           echo "Vérification du projet Android..."
-          test -f app/build.gradle
-          test -f settings.gradle
 
-          echo "Projet V10 Firebase prêt."
+          test -f "$PROJECT_DIR/app/build.gradle" || \
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
 
+          echo "Projet Android prêt."
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+
+      # ---------------------------------------------------------
+      # 7. PRÉPARER LA CLÉ DE SIGNATURE
+      # ---------------------------------------------------------
       - name: "Préparer la clé de signature"
         shell: bash
         env:
@@ -98,7 +147,9 @@ jobs:
         run: |
           set -e
 
-          cd ./v10-project
+          cd "$PROJECT_DIR"
+
+          echo "Préparation de la clé de signature..."
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
@@ -106,6 +157,10 @@ jobs:
 
           echo "Clé de signature préparée."
 
+
+      # ---------------------------------------------------------
+      # 8. CONSTRUIRE L'APK V10 FIREBASE
+      # ---------------------------------------------------------
       - name: "Construire l'APK V10 Firebase"
         shell: bash
         env:
@@ -115,25 +170,29 @@ jobs:
         run: |
           set -e
 
-          cd ./v10-project
+          cd "$PROJECT_DIR"
 
           chmod +x gradlew
 
-          echo "Nettoyage..."
+          echo "Nettoyage du projet..."
           ./gradlew clean
 
-          echo "Compilation de l'APK Release..."
+          echo "Compilation de l'APK Release Firebase..."
           ./gradlew assembleRelease
 
           echo "APK généré :"
-          ls -lh app/build/outputs/apk/release/
+          find app/build/outputs/apk/release -type f -maxdepth 2 -print -exec ls -lh {} \;
 
+
+      # ---------------------------------------------------------
+      # 9. VÉRIFIER L'APK
+      # ---------------------------------------------------------
       - name: "Vérifier l'APK"
         shell: bash
         run: |
           set -e
 
-          APK="./v10-project/app/build/outputs/apk/release/app-release.apk"
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           test -f "$APK"
 
@@ -141,13 +200,20 @@ jobs:
           ls -lh "$APK"
 
           echo "Vérification de la signature..."
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
+
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+          "$APKSIGNER" verify --verbose "$APK"
 
           echo "Signature APK valide."
 
+
+      # ---------------------------------------------------------
+      # 10. PUBLIER L'APK
+      # ---------------------------------------------------------
       - name: "Publier l'APK V10 Firebase"
         uses: actions/upload-artifact@v4
         with:
           name: YOUNGEST-BUSINESS-V10-FIREBASE
-          path: ./v10-project/app/build/outputs/apk/release/app-release.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
