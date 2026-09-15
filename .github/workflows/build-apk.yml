@@ -124,8 +124,6 @@ jobs:
 
           echo "Keystore V8 préparé."
 
-          ls -lh release-keystore.jks
-
 
       - name: "Vérifier Gradle"
         shell: bash
@@ -180,7 +178,7 @@ jobs:
 
           echo "Vérification de la signature..."
 
-          apksigner verify \
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
             --verbose \
             "$APK_FILE"
 
