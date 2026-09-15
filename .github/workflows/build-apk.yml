@@ -1,4 +1,4 @@
-name: "Build YOUNGEST’S BUSINESS V9 APK"
+name: "Build YOUNGEST'S BUSINESS V10 Firebase APK"
 
 on:
   workflow_dispatch:
@@ -8,14 +8,13 @@ on:
 
 jobs:
   build:
-    name: "Build Android APK V9"
+    name: "Build Android APK V10 Firebase"
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
 
     steps:
-
       - name: "Récupérer le dépôt"
         uses: actions/checkout@v4
 
@@ -27,13 +26,6 @@ jobs:
 
       - name: "Installer Android SDK"
         uses: android-actions/setup-android@v3
-        with:
-          packages: ""
-
-      - name: "Installer Gradle 8.9"
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
 
       - name: "Installer les composants Android nécessaires"
         shell: bash
@@ -41,7 +33,7 @@ jobs:
           set -e
 
           echo "Acceptation des licences Android..."
-          yes | sdkmanager --licenses > /dev/null || true
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
           echo "Installation des composants Android..."
           sdkmanager \
@@ -51,125 +43,111 @@ jobs:
 
           echo "Composants Android installés."
 
-      - name: "Décompresser le projet V9"
+      - name: "Installer Gradle 8.9"
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: "Décompresser le projet V10 Firebase"
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V9-MOBILE-MONEY.zip"
+          ZIP_FILE="./YOUNGEST-BUSINESS-V10-FIREBASE-PREPARE-1.zip"
 
-          echo "Recherche du fichier V9..."
-
+          echo "Recherche du fichier V10..."
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier V9 est introuvable."
+            echo "ERREUR : le fichier V10 est introuvable."
             echo "Fichiers présents dans le dépôt :"
             ls -lah
             exit 1
           fi
 
-          echo "ZIP V9 trouvé :"
+          echo "ZIP V10 trouvé :"
           ls -lh "$ZIP_FILE"
 
-          echo "Décompression du projet..."
-          unzip -o "$ZIP_FILE"
+          echo "Décompression du projet V10..."
+          unzip -o "$ZIP_FILE" -d ./v10-project
 
-          echo "Contenu après décompression :"
-          ls -lah
+          echo "Contenu du projet V10 :"
+          ls -lah ./v10-project
 
-      - name: "Vérifier le projet Android"
+      - name: "Préparer le projet Android"
         shell: bash
         run: |
           set -e
 
-          if [ ! -f "app/build.gradle" ]; then
-            echo "ERREUR : app/build.gradle est introuvable."
-            find . -maxdepth 4 -type f | head -100
-            exit 1
-          fi
+          cd ./v10-project
 
-          echo "Projet Android détecté."
-          echo "Version du projet :"
-          grep -E "versionCode|versionName|applicationId" app/build.gradle || true
+          echo "Vérification du fichier Firebase..."
+          test -f app/google-services.json
 
-      - name: "Préparer le keystore V9"
+          echo "Vérification du projet Android..."
+          test -f app/build.gradle
+          test -f settings.gradle
+
+          echo "Projet V10 Firebase prêt."
+
+      - name: "Préparer la clé de signature"
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -e
 
-          echo "Création du keystore..."
-
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : KEYSTORE_BASE64 est vide."
-            exit 1
-          fi
+          cd ./v10-project
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          if [ ! -s release-keystore.jks ]; then
-            echo "ERREUR : le keystore n'a pas été créé."
-            exit 1
-          fi
+          test -s release-keystore.jks
 
-          echo "Keystore V9 préparé."
-          ls -lh release-keystore.jks
+          echo "Clé de signature préparée."
 
-      - name: "Construire l'APK Release V9 signé"
+      - name: "Construire l'APK V10 Firebase"
         shell: bash
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: "youngest_business"
+          ANDROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
-          echo "Nettoyage du projet..."
-          gradle --no-daemon clean
+          cd ./v10-project
 
-          echo "Construction de l'APK Release V9..."
-          gradle --no-daemon assembleRelease --stacktrace
+          chmod +x gradlew
 
-          echo "Construction terminée."
+          echo "Nettoyage..."
+          ./gradlew clean
 
-      - name: "Vérifier l'APK V9"
+          echo "Compilation de l'APK Release..."
+          ./gradlew assembleRelease
+
+          echo "APK généré :"
+          ls -lh app/build/outputs/apk/release/
+
+      - name: "Vérifier l'APK"
         shell: bash
         run: |
           set -e
 
-          APK="app/build/outputs/apk/release/app-release.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          APK="./v10-project/app/build/outputs/apk/release/app-release.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK introuvable."
-            find app/build/outputs -type f -name "*.apk" -print
-            exit 1
-          fi
+          test -f "$APK"
 
           echo "APK trouvé :"
           ls -lh "$APK"
 
           echo "Vérification de la signature..."
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose "$APK"
 
-          if [ ! -f "$APKSIGNER" ]; then
-            echo "ERREUR : apksigner introuvable."
-            exit 1
-          fi
+          echo "Signature APK valide."
 
-          "$APKSIGNER" verify --verbose "$APK"
-
-          echo "Signature APK V9 vérifiée avec succès."
-
-      - name: "Afficher l'APK final"
-        shell: bash
-        run: |
-          echo "===== APK FINAL V9 ====="
-          ls -lh app/build/outputs/apk/release/app-release.apk
-          echo "========================"
-
-      - name: "Publier l'APK V9"
+      - name: "Publier l'APK V10 Firebase"
         uses: actions/upload-artifact@v4
         with:
-          name: "YOUNGEST-BUSINESS-V9-MOBILE-MONEY"
-          path: "app/build/outputs/apk/release/app-release.apk"
+          name: YOUNGEST-BUSINESS-V10-FIREBASE
+          path: ./v10-project/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
