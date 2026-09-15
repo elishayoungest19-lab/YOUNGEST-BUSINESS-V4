@@ -68,11 +68,12 @@ jobs:
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERREUR : le fichier V8 est introuvable."
+            echo "Fichiers présents dans le dépôt :"
             ls -lh
             exit 1
           fi
 
-          echo "ZIP V8 trouvé."
+          echo "ZIP V8 trouvé : $ZIP_FILE"
 
           rm -rf extracted
           mkdir -p extracted
@@ -103,6 +104,29 @@ jobs:
           echo "Projet V8 préparé."
 
 
+      - name: "Préparer le keystore V8"
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -e
+
+          echo "Préparation du keystore de signature..."
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERREUR : KEYSTORE_BASE64 est vide."
+            exit 1
+          fi
+
+          echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+
+          chmod 600 release-keystore.jks
+
+          echo "Keystore V8 préparé."
+
+          ls -lh release-keystore.jks
+
+
       - name: "Vérifier Gradle"
         shell: bash
         run: |
@@ -112,90 +136,53 @@ jobs:
 
       - name: "Nettoyer le projet"
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: "youngest_business"
+          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
+
           gradle --no-daemon clean
 
 
-      - name: "Construire l'APK Release"
+      - name: "Construire l'APK Release V8 signé"
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: "youngest_business"
+          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
-          echo "Construction de la version Release V8..."
+          echo "Construction de YOUNGEST'S BUSINESS V8..."
 
           gradle --no-daemon assembleRelease --stacktrace
 
-          echo "Recherche de l'APK Release..."
-
-          find app/build/outputs/apk -type f -name "*.apk" -print
+          echo "Construction Release terminée."
 
 
-      - name: "Préparer la clé de signature"
+      - name: "Vérifier la signature de l'APK V8"
         shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -e
 
-          echo "Décodage du keystore..."
+          APK_FILE="app/build/outputs/apk/release/app-release.apk"
 
-          echo "$KEYSTORE_BASE64" | base64 --decode > youngest-business-release.jks
-
-          chmod 600 youngest-business-release.jks
-
-          echo "Keystore préparé."
-
-
-      - name: "Signer l'APK V8"
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -e
-
-          APK_UNSIGNED=$(find app/build/outputs/apk -type f -name "*-unsigned.apk" | head -n 1)
-
-          if [ -z "$APK_UNSIGNED" ]; then
-            echo "APK Release non signé introuvable."
-
+          if [ ! -f "$APK_FILE" ]; then
+            echo "ERREUR : APK Release introuvable."
             echo "APK disponibles :"
             find app/build/outputs/apk -type f -name "*.apk" -print
-
             exit 1
           fi
 
-          echo "APK Release trouvé : $APK_UNSIGNED"
-
-          mkdir -p signed
-
-          ZIPALIGNED_APK="signed/YOUNGEST-BUSINESS-V8-aligned.apk"
-          FINAL_APK="signed/YOUNGEST-BUSINESS-V8.apk"
-
-          echo "Alignement de l'APK..."
-
-          zipalign \
-            -p \
-            4 \
-            "$APK_UNSIGNED" \
-            "$ZIPALIGNED_APK"
-
-          echo "Signature de l'APK..."
-
-          apksigner sign \
-            --ks youngest-business-release.jks \
-            --ks-key-alias youngest_business \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --key-pass env:KEY_PASSWORD \
-            --out "$FINAL_APK" \
-            "$ZIPALIGNED_APK"
+          echo "APK trouvé : $APK_FILE"
 
           echo "Vérification de la signature..."
 
           apksigner verify \
             --verbose \
-            "$FINAL_APK"
+            "$APK_FILE"
 
           echo "Signature V8 validée."
 
@@ -205,19 +192,21 @@ jobs:
         run: |
           set -e
 
-          echo "APK FINAL :"
+          APK_FILE="app/build/outputs/apk/release/app-release.apk"
 
-          ls -lh signed/YOUNGEST-BUSINESS-V8.apk
+          echo "========================================"
+          echo "YOUNGEST'S BUSINESS V8"
+          echo "APK Release signé"
+          echo "========================================"
 
-          test -f signed/YOUNGEST-BUSINESS-V8.apk
+          ls -lh "$APK_FILE"
 
-          echo ""
-          echo "YOUNGEST'S BUSINESS V8 est prêt."
+          test -f "$APK_FILE"
 
 
       - name: "Publier l'APK V8"
         uses: actions/upload-artifact@v4
         with:
           name: "YOUNGEST-BUSINESS-V8-RELEASE"
-          path: "signed/YOUNGEST-BUSINESS-V8.apk"
+          path: "app/build/outputs/apk/release/app-release.apk"
           if-no-files-found: error
