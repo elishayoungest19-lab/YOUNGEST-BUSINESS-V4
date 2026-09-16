@@ -59,7 +59,7 @@ jobs:
         run: |
           set -e
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE-1.1.zip"
+          ZIP_FILE="./YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE-1.2.zip"
 
           echo "Recherche du fichier V13 Firebase..."
 
@@ -76,6 +76,7 @@ jobs:
           rm -rf ./v13-extracted
           mkdir -p ./v13-extracted
 
+          echo "Décompression du projet V13..."
           unzip -o "$ZIP_FILE" -d ./v13-extracted
 
           echo "Décompression V13 terminée."
@@ -88,68 +89,109 @@ jobs:
           echo "Recherche du projet Android..."
 
           if [ -d "./v13-extracted/v13-project" ]; then
+
             PROJECT_DIR="./v13-extracted/v13-project"
 
           elif [ -d "./v13-extracted/YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE" ]; then
+
             PROJECT_DIR="./v13-extracted/YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE"
 
+          elif [ -d "./v13-extracted/YOUNGEST-BUSINESS" ]; then
+
+            PROJECT_DIR="./v13-extracted/YOUNGEST-BUSINESS"
+
           elif [ -f "./v13-extracted/settings.gradle" ]; then
+
             PROJECT_DIR="./v13-extracted"
 
           elif [ -f "./v13-extracted/settings.gradle.kts" ]; then
+
             PROJECT_DIR="./v13-extracted"
 
           else
+
             PROJECT_DIR=$(find ./v13-extracted \
               -type f \
               \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
               -print -quit | xargs -r dirname)
 
             if [ -z "$PROJECT_DIR" ]; then
-              echo "ERREUR : aucun projet Gradle Android trouvé."
-              find ./v13-extracted -maxdepth 4 -type f | head -100
+              echo "ERREUR : aucun projet Android trouvé."
+              echo "Structure extraite :"
+              find ./v13-extracted -maxdepth 4 -type f | head -200
               exit 1
             fi
+
+          fi
+
+          echo "Projet Android trouvé : $PROJECT_DIR"
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERREUR : le dossier app est introuvable."
+            find "$PROJECT_DIR" -maxdepth 3 -type d
+            exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Projet Android détecté :"
-          echo "$PROJECT_DIR"
-
-          echo "Contenu du projet :"
-          ls -lah "$PROJECT_DIR"
+          echo "Projet Android V13 préparé avec succès."
 
       - name: "Installer la configuration Firebase"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche de google-services.json..."
+          echo "Recherche de la configuration Firebase..."
 
           if [ -f "./google-services (2).json" ]; then
-            echo "Configuration Firebase trouvée à la racine."
-            mkdir -p "$PROJECT_DIR/app"
+
+            echo "Utilisation de google-services (2).json"
             cp "./google-services (2).json" \
               "$PROJECT_DIR/app/google-services.json"
 
           elif [ -f "./google-services.json" ]; then
-            echo "Configuration Firebase trouvée à la racine."
-            mkdir -p "$PROJECT_DIR/app"
+
+            echo "Utilisation de google-services.json"
             cp "./google-services.json" \
               "$PROJECT_DIR/app/google-services.json"
 
           elif [ -f "$PROJECT_DIR/app/google-services.json" ]; then
+
             echo "Configuration Firebase déjà présente dans le projet."
 
           else
-            echo "ERREUR : google-services.json introuvable."
+
+            echo "ERREUR : aucun fichier google-services.json trouvé."
+            ls -lah
             exit 1
+
           fi
 
           echo "Configuration Firebase installée."
 
           ls -lh "$PROJECT_DIR/app/google-services.json"
+
+      - name: "Vérifier la configuration Firebase"
+        shell: bash
+        run: |
+          set -e
+
+          FIREBASE_FILE="$PROJECT_DIR/app/google-services.json"
+
+          echo "Vérification du fichier Firebase..."
+
+          if [ ! -s "$FIREBASE_FILE" ]; then
+            echo "ERREUR : le fichier Firebase est vide ou absent."
+            exit 1
+          fi
+
+          echo "Fichier Firebase présent."
+
+          if grep -q "youngestsbusiness" "$FIREBASE_FILE"; then
+            echo "Projet Firebase Youngestsbusiness détecté."
+          else
+            echo "AVERTISSEMENT : le nom du projet Firebase n'a pas été détecté."
+          fi
 
       - name: "Préparer la clé de signature"
         env:
@@ -162,9 +204,29 @@ jobs:
 
           cd "$PROJECT_DIR"
 
+          echo "Préparation de la clé de signature..."
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERREUR : KEYSTORE_BASE64 est absent."
+            exit 1
+          fi
+
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "ERREUR : KEYSTORE_PASSWORD est absent."
+            exit 1
+          fi
+
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "ERREUR : KEY_PASSWORD est absent."
+            exit 1
+          fi
+
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          test -s release-keystore.jks
+          if [ ! -s release-keystore.jks ]; then
+            echo "ERREUR : impossible de créer release-keystore.jks."
+            exit 1
+          fi
 
           echo "Vérification de la clé de signature..."
 
@@ -195,7 +257,7 @@ jobs:
           echo "Construction de l'APK V13..."
           gradle assembleRelease
 
-          echo "Construction V13 terminée."
+          echo "Construction V13 terminée avec succès."
 
       - name: "Vérifier l'APK V13"
         shell: bash
@@ -215,9 +277,33 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
           echo "Vérification de la signature..."
-          "$APKSIGNER" verify --verbose "$APK"
+
+          "$APKSIGNER" verify \
+            --verbose \
+            "$APK"
 
           echo "APK V13 signé et vérifié avec succès."
+
+      - name: "Afficher les informations de l'APK"
+        shell: bash
+        run: |
+          set -e
+
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+
+          echo "=========================================="
+          echo "      YOUNGEST'S BUSINESS V13"
+          echo "      CLIENT + BUREAU + FIREBASE"
+          echo "=========================================="
+
+          echo "APK :"
+          ls -lh "$APK"
+
+          echo "Type : APK Release"
+          echo "Signature : vérifiée"
+          echo "Firebase : configuration installée"
+
+          echo "=========================================="
 
       - name: "Publier l'APK V13 Client Bureau Firebase"
         uses: actions/upload-artifact@v4
