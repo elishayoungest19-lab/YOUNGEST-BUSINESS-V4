@@ -25,7 +25,9 @@ jobs:
           java-version: "17"
 
       - name: "Installer Android SDK"
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
 
       - name: "Installer les composants Android nécessaires"
         shell: bash
@@ -36,13 +38,15 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
 
           echo "Installation de platform-tools..."
-          sdkmanager "platform-tools"
+          sdkmanager --install "platform-tools"
 
           echo "Installation de la plateforme Android 35..."
-          sdkmanager "platforms;android-35"
+          sdkmanager --install "platforms;android-35"
 
           echo "Installation de Build Tools 35.0.0..."
-          sdkmanager "build-tools;35.0.0"
+          sdkmanager --install "build-tools;35.0.0"
+
+          echo "Composants Android installés avec succès."
 
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
@@ -87,8 +91,10 @@ jobs:
 
           if [ -f "./v14-extracted/settings.gradle" ]; then
             PROJECT_DIR="./v14-extracted"
+
           elif [ -f "./v14-extracted/settings.gradle.kts" ]; then
             PROJECT_DIR="./v14-extracted"
+
           else
             PROJECT_DIR=$(find ./v14-extracted \
               -type f \
@@ -110,13 +116,55 @@ jobs:
           echo "Contenu du projet :"
           ls -lah "$PROJECT_DIR"
 
-          echo "Vérification de app/build.gradle..."
-          test -f "$PROJECT_DIR/app/build.gradle"
+          echo "Vérification de app..."
+          test -d "$PROJECT_DIR/app"
 
-          echo "Vérification de Firebase..."
-          test -f "$PROJECT_DIR/app/google-services.json"
+          echo "Vérification du projet Gradle..."
+          if [ -f "$PROJECT_DIR/settings.gradle" ]; then
+            echo "settings.gradle trouvé."
+          elif [ -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            echo "settings.gradle.kts trouvé."
+          else
+            echo "ERREUR : fichier settings Gradle introuvable."
+            exit 1
+          fi
 
           echo "Projet V14 prêt."
+
+      - name: "Installer la configuration Firebase"
+        shell: bash
+        run: |
+          set -e
+
+          echo "Recherche de la configuration Firebase..."
+
+          if [ -f "./google-services (2).json" ]; then
+            echo "google-services (2).json trouvé à la racine."
+
+            mkdir -p "$PROJECT_DIR/app"
+
+            cp "./google-services (2).json" \
+              "$PROJECT_DIR/app/google-services.json"
+
+          elif [ -f "./google-services.json" ]; then
+            echo "google-services.json trouvé à la racine."
+
+            mkdir -p "$PROJECT_DIR/app"
+
+            cp "./google-services.json" \
+              "$PROJECT_DIR/app/google-services.json"
+
+          elif [ -f "$PROJECT_DIR/app/google-services.json" ]; then
+            echo "google-services.json déjà présent dans le projet V14."
+
+          else
+            echo "ERREUR : google-services.json introuvable."
+            exit 1
+          fi
+
+          echo "Configuration Firebase installée."
+
+          ls -lh "$PROJECT_DIR/app/google-services.json"
 
       - name: "Préparer la clé de signature"
         env:
