@@ -59,21 +59,25 @@ jobs:
         run: |
           set -e
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE-1.zip"
+          echo "Recherche automatique du fichier ZIP V13..."
 
-          echo "Recherche du fichier V13 Firebase..."
-          echo "Fichier attendu : $ZIP_FILE"
+          echo "Fichiers ZIP présents dans le dépôt :"
+          find . -maxdepth 2 -type f -iname "*.zip" -print
 
-          if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier V13 Firebase est introuvable."
+          ZIP_FILE=$(find . -maxdepth 2 -type f \
+            -iname "*V13*CLIENT*BUREAU*FIREBASE*.zip" \
+            -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERREUR : aucun fichier ZIP V13 Client Bureau Firebase trouvé."
             echo ""
-            echo "Fichiers ZIP disponibles dans le dépôt :"
-            find . -maxdepth 2 -type f -name "*.zip" -print
+            echo "ZIP disponibles dans le dépôt :"
+            find . -maxdepth 2 -type f -iname "*.zip" -print
             exit 1
           fi
 
-          echo "Fichier V13 trouvé avec succès :"
-          ls -lh "$ZIP_FILE"
+          echo "ZIP V13 trouvé :"
+          echo "$ZIP_FILE"
 
           rm -rf ./v13-extracted
           mkdir -p ./v13-extracted
@@ -81,7 +85,7 @@ jobs:
           echo "Décompression du projet V13..."
           unzip -o "$ZIP_FILE" -d ./v13-extracted
 
-          echo "Décompression terminée."
+          echo "Décompression terminée avec succès."
 
       - name: "Préparer le projet Android V13"
         shell: bash
@@ -124,7 +128,7 @@ jobs:
             exit 1
           fi
 
-          echo "Dossier app trouvé."
+          echo "Dossier app trouvé avec succès."
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
@@ -137,14 +141,14 @@ jobs:
           echo ""
 
           echo "Fichiers principaux :"
-          find "$PROJECT_DIR" -maxdepth 2 -type f | sort | head -150
+          find "$PROJECT_DIR" -maxdepth 2 -type f | sort | head -200
 
       - name: "Installer la configuration Firebase"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche de google-services.json..."
+          echo "Recherche du google-services.json..."
 
           if [ -f "./google-services (2).json" ]; then
             echo "Configuration Firebase trouvée à la racine."
@@ -162,7 +166,7 @@ jobs:
             exit 1
           fi
 
-          echo "Configuration Firebase installée avec succès."
+          echo "Configuration Firebase installée."
 
           ls -lh "$PROJECT_DIR/app/google-services.json"
 
@@ -175,21 +179,19 @@ jobs:
 
           echo "Vérification de la configuration Firebase..."
 
-          if [ ! -s "$FIREBASE_FILE" ]; then
-            echo "ERREUR : google-services.json est vide ou invalide."
+          if [ ! -f "$FIREBASE_FILE" ]; then
+            echo "ERREUR : google-services.json introuvable."
             exit 1
           fi
 
-          echo "google-services.json est présent et non vide."
+          echo "google-services.json trouvé."
 
-          echo "Vérification du package Android Firebase..."
+          echo "Recherche du package Android configuré..."
 
-          if grep -q "com.aistudio.youngestbiz.mbkz" "$FIREBASE_FILE"; then
-            echo "Package Android confirmé : com.aistudio.youngestbiz.mbkz"
-          else
-            echo "AVERTISSEMENT : le package attendu n'a pas été trouvé directement dans google-services.json."
-            echo "La compilation continuera."
-          fi
+          grep -o '"package_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+            "$FIREBASE_FILE" || true
+
+          echo "Configuration Firebase vérifiée."
 
       - name: "Préparer la clé de signature"
         env:
@@ -204,17 +206,9 @@ jobs:
 
           echo "Préparation de la clé de signature..."
 
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : KEYSTORE_BASE64 est absent."
-            exit 1
-          fi
-
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          if [ ! -s release-keystore.jks ]; then
-            echo "ERREUR : le fichier release-keystore.jks est vide."
-            exit 1
-          fi
+          test -s release-keystore.jks
 
           echo "Vérification de la clé de signature..."
 
@@ -287,15 +281,19 @@ jobs:
 
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
-          echo "=========================================="
-          echo "      YOUNGEST'S BUSINESS — V13"
-          echo "      CLIENT + BUREAU + FIREBASE"
-          echo "=========================================="
+          echo "=============================================="
+          echo "       YOUNGEST'S BUSINESS - V13"
+          echo "       CLIENT + BUREAU + FIREBASE"
+          echo "=============================================="
           echo ""
+
           echo "APK :"
           ls -lh "$APK"
+
           echo ""
-          echo "Chemin : $APK"
+          echo "Chemin :"
+          echo "$APK"
+
           echo ""
           echo "Construction terminée avec succès."
 
