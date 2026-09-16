@@ -1,4 +1,4 @@
-name: "Build YOUNGEST'S BUSINESS V13 Client Bureau Firebase APK"
+name: "Build YOUNGEST'S BUSINESS V14 Validation Client Bureau Firebase APK"
 
 on:
   workflow_dispatch:
@@ -8,14 +8,13 @@ on:
 
 jobs:
   build:
-    name: "Build Android APK V13 Client Bureau Firebase"
+    name: "Build Android APK V14 Validation Client Bureau Firebase"
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
 
     steps:
-
       - name: "Récupérer le dépôt"
         uses: actions/checkout@v4
 
@@ -27,8 +26,6 @@ jobs:
 
       - name: "Installer Android SDK"
         uses: android-actions/setup-android@v3
-        with:
-          packages: ""
 
       - name: "Installer les composants Android nécessaires"
         shell: bash
@@ -47,113 +44,79 @@ jobs:
           echo "Installation de Build Tools 35.0.0..."
           sdkmanager "build-tools;35.0.0"
 
-          echo "Composants Android installés avec succès."
-
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: "Trouver et décompresser le projet V13"
+      - name: "Trouver et décompresser le projet V14"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche automatique du ZIP V13..."
+          echo "Recherche automatique du ZIP V14..."
 
           ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -iname "YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE*.zip" \
+            -iname "YOUNGEST-BUSINESS-V14-VALIDATION-CLIENT-BUREAU-FIREBASE*.zip" \
             -print | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERREUR : aucun fichier ZIP V13 trouvé."
+            echo "ERREUR : aucun fichier ZIP V14 trouvé."
             echo "Fichiers présents dans le dépôt :"
             ls -lah
             exit 1
           fi
 
-          echo "ZIP V13 trouvé :"
-          echo "$ZIP_FILE"
+          echo "Fichier V14 trouvé :"
           ls -lh "$ZIP_FILE"
 
-          rm -rf ./v13-extracted
-          mkdir -p ./v13-extracted
+          rm -rf ./v14-extracted
+          mkdir -p ./v14-extracted
 
-          unzip -o "$ZIP_FILE" -d ./v13-extracted
+          unzip -o "$ZIP_FILE" -d ./v14-extracted
 
-          echo "Décompression V13 terminée."
+          echo "Contenu extrait :"
+          ls -lah ./v14-extracted
 
-      - name: "Préparer le projet Android V13"
+      - name: "Préparer le projet Android V14"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche du projet Android..."
+          echo "Recherche du projet Android V14..."
 
-          if [ -d "./v13-extracted/v13-project" ]; then
-            PROJECT_DIR="./v13-extracted/v13-project"
-
-          elif [ -d "./v13-extracted/YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE" ]; then
-            PROJECT_DIR="./v13-extracted/YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE"
-
-          elif [ -f "./v13-extracted/settings.gradle" ]; then
-            PROJECT_DIR="./v13-extracted"
-
-          elif [ -f "./v13-extracted/settings.gradle.kts" ]; then
-            PROJECT_DIR="./v13-extracted"
-
+          if [ -f "./v14-extracted/settings.gradle" ]; then
+            PROJECT_DIR="./v14-extracted"
+          elif [ -f "./v14-extracted/settings.gradle.kts" ]; then
+            PROJECT_DIR="./v14-extracted"
           else
-            PROJECT_DIR=$(find ./v13-extracted \
+            PROJECT_DIR=$(find ./v14-extracted \
               -type f \
               \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
               -print -quit | xargs -r dirname)
 
             if [ -z "$PROJECT_DIR" ]; then
               echo "ERREUR : aucun projet Gradle Android trouvé."
-              echo "Contenu extrait :"
-              find ./v13-extracted -maxdepth 4 -type f | head -100
+              find ./v14-extracted -maxdepth 4 -type f | head -100
               exit 1
             fi
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Projet Android détecté :"
+          echo "Projet Android V14 détecté :"
           echo "$PROJECT_DIR"
 
           echo "Contenu du projet :"
           ls -lah "$PROJECT_DIR"
 
-      - name: "Installer la configuration Firebase"
-        shell: bash
-        run: |
-          set -e
+          echo "Vérification de app/build.gradle..."
+          test -f "$PROJECT_DIR/app/build.gradle"
 
-          echo "Recherche de la configuration Firebase..."
+          echo "Vérification de Firebase..."
+          test -f "$PROJECT_DIR/app/google-services.json"
 
-          if [ -f "./google-services (2).json" ]; then
-            echo "google-services (2).json trouvé à la racine."
-            mkdir -p "$PROJECT_DIR/app"
-            cp "./google-services (2).json" \
-              "$PROJECT_DIR/app/google-services.json"
-
-          elif [ -f "./google-services.json" ]; then
-            echo "google-services.json trouvé à la racine."
-            mkdir -p "$PROJECT_DIR/app"
-            cp "./google-services.json" \
-              "$PROJECT_DIR/app/google-services.json"
-
-          elif [ -f "$PROJECT_DIR/app/google-services.json" ]; then
-            echo "google-services.json déjà présent dans le projet."
-
-          else
-            echo "ERREUR : google-services.json introuvable."
-            exit 1
-          fi
-
-          echo "Configuration Firebase installée."
-
-          ls -lh "$PROJECT_DIR/app/google-services.json"
+          echo "Projet V14 prêt."
 
       - name: "Préparer la clé de signature"
         env:
@@ -179,7 +142,7 @@ jobs:
 
           echo "Clé de signature vérifiée avec succès."
 
-      - name: "Construire l'APK V13 Client Bureau Firebase"
+      - name: "Construire l'APK V14 Validation Client Bureau Firebase"
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: "youngest_business"
@@ -193,15 +156,15 @@ jobs:
           echo "Version de Gradle :"
           gradle --version
 
-          echo "Nettoyage du projet..."
+          echo "Nettoyage du projet V14..."
           gradle clean
 
-          echo "Construction de l'APK V13..."
+          echo "Construction de l'APK V14..."
           gradle assembleRelease
 
-          echo "Construction V13 terminée."
+          echo "Construction V14 terminée avec succès."
 
-      - name: "Vérifier l'APK V13"
+      - name: "Vérifier l'APK V14"
         shell: bash
         run: |
           set -e
@@ -209,23 +172,24 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK V13 introuvable."
+            echo "ERREUR : APK V14 introuvable."
             exit 1
           fi
 
-          echo "APK V13 trouvé :"
+          echo "APK V14 trouvé :"
           ls -lh "$APK"
 
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
           echo "Vérification de la signature..."
+
           "$APKSIGNER" verify --verbose "$APK"
 
-          echo "APK V13 signé et vérifié avec succès."
+          echo "APK V14 signé et vérifié avec succès."
 
-      - name: "Publier l'APK V13 Client Bureau Firebase"
+      - name: "Publier l'APK V14 Validation Client Bureau Firebase"
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE
+          name: YOUNGEST-BUSINESS-V14-VALIDATION-CLIENT-BUREAU-FIREBASE
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
