@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "774425822304",
+    "project_id": "youngestsbusiness",
+    "storage_bucket": "youngestsbusiness.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:774425822304:android:fadd17cb6f2e9eaee52f05",
+        "android_client_info": {
+          "package_name": "com.aistudio.youngestbiz.mbkz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuPgA7O5edbvXbSZ24UtjRXh8n9BWGdbY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
