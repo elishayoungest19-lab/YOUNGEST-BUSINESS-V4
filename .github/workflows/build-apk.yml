@@ -59,7 +59,7 @@ jobs:
         run: |
           set -e
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE.zip"
+          ZIP_FILE="./YOUNGEST-BUSINESS-V13-CLIENT-BUREAU-FIREBASE-1.1.zip"
 
           echo "Recherche du fichier V13 Firebase..."
 
