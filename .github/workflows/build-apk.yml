@@ -1,4 +1,4 @@
-name: "Build YOUNGEST'S BUSINESS V11 Sync Payment Firebase APK"
+name: "Build YOUNGEST'S BUSINESS V12 Contact About Firebase APK"
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: "Build Android APK V11 Sync Payment Firebase"
+    name: "Build Android APK V12 Contact About Firebase"
     runs-on: ubuntu-latest
 
     permissions:
@@ -19,19 +19,16 @@ jobs:
       - name: "Récupérer le dépôt"
         uses: actions/checkout@v4
 
-
       - name: "Installer Java 17"
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
-
       - name: "Installer Android SDK"
         uses: android-actions/setup-android@v3
         with:
           packages: ""
-
 
       - name: "Installer les composants Android nécessaires"
         shell: bash
@@ -52,70 +49,67 @@ jobs:
 
           echo "Composants Android installés avec succès."
 
-
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-
-      - name: "Décompresser le projet V11 Sync Payment Firebase"
+      - name: "Décompresser le projet V12 Contact About Firebase"
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE="./YOUNGEST-BUSINESS-V11-SYNC-PAYMENT-FIREBASE.zip"
+          ZIP_FILE="./YOUNGEST-BUSINESS-V12-CONTACT-ABOUT-FIREBASE-FINAL-1.zip"
 
-          echo "Recherche du fichier V11 Firebase..."
+          echo "Recherche du fichier V12 Firebase..."
 
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERREUR : le fichier V11 Firebase est introuvable."
-            echo "Contenu du dépôt :"
+            echo "ERREUR : le fichier V12 Firebase est introuvable."
+            echo "Fichiers présents dans le dépôt :"
             ls -lah
             exit 1
           fi
 
-          echo "Fichier V11 trouvé :"
+          echo "Fichier V12 trouvé :"
           ls -lh "$ZIP_FILE"
 
-          rm -rf ./v11-extracted
-          mkdir -p ./v11-extracted
+          rm -rf ./v12-extracted
+          mkdir -p ./v12-extracted
 
-          echo "Décompression du projet V11..."
-          unzip -o "$ZIP_FILE" -d ./v11-extracted
+          echo "Décompression du projet V12..."
+          unzip -o "$ZIP_FILE" -d ./v12-extracted
 
           echo "Décompression terminée."
 
           echo "Contenu extrait :"
-          find ./v11-extracted -maxdepth 3 -type f | head -100
+          find ./v12-extracted -maxdepth 3 -type f | head -100
 
-
-      - name: "Préparer le projet Android V11"
+      - name: "Préparer le projet Android V12"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche du projet Android V11..."
+          echo "Recherche du projet Android V12..."
 
-          if [ -d "./v11-extracted/v11-project" ]; then
+          if [ -d "./v12-extracted/v12-project" ]; then
 
-            PROJECT_DIR="./v11-extracted/v11-project"
+            PROJECT_DIR="./v12-extracted/v12-project"
 
-          elif [ -d "./v11-extracted/YOUNGEST-BUSINESS-V11-SYNC-PAYMENT-FIREBASE" ]; then
+          elif [ -d "./v12-extracted/YOUNGEST-BUSINESS-V12-CONTACT-ABOUT-FIREBASE" ]; then
 
-            PROJECT_DIR="./v11-extracted/YOUNGEST-BUSINESS-V11-SYNC-PAYMENT-FIREBASE"
+            PROJECT_DIR="./v12-extracted/YOUNGEST-BUSINESS-V12-CONTACT-ABOUT-FIREBASE"
 
-          elif [ -f "./v11-extracted/settings.gradle" ]; then
+          elif [ -f "./v12-extracted/settings.gradle" ]; then
 
-            PROJECT_DIR="./v11-extracted"
+            PROJECT_DIR="./v12-extracted"
 
-          elif [ -f "./v11-extracted/settings.gradle.kts" ]; then
+          elif [ -f "./v12-extracted/settings.gradle.kts" ]; then
 
-            PROJECT_DIR="./v11-extracted"
+            PROJECT_DIR="./v12-extracted"
 
           else
 
-            PROJECT_DIR=$(find ./v11-extracted \
+            PROJECT_DIR=$(find ./v12-extracted \
               -type f \
               \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
               -print -quit | xargs -r dirname)
@@ -123,9 +117,9 @@ jobs:
           fi
 
           if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
-            echo "ERREUR : projet Android V11 introuvable."
-            echo "Arborescence complète :"
-            find ./v11-extracted -maxdepth 5 -print
+            echo "ERREUR : projet Android V12 introuvable."
+            echo "Arborescence du projet :"
+            find ./v12-extracted -maxdepth 5 -print
             exit 1
           fi
 
@@ -137,7 +131,6 @@ jobs:
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
 
       - name: "Installer la configuration Firebase"
         shell: bash
@@ -158,7 +151,7 @@ jobs:
 
           elif [ -f "$PROJECT_DIR/app/google-services.json" ]; then
 
-            echo "google-services.json déjà présent dans le projet V11."
+            echo "google-services.json déjà présent dans le projet V12."
 
           else
 
@@ -170,7 +163,6 @@ jobs:
           echo "Configuration Firebase installée."
 
           ls -lh "$PROJECT_DIR/app/google-services.json"
-
 
       - name: "Vérifier la configuration Firebase"
         shell: bash
@@ -192,7 +184,6 @@ jobs:
             echo "ERREUR : project_id Firebase introuvable."
             exit 1
           fi
-
 
       - name: "Préparer la clé de signature"
         shell: bash
@@ -225,8 +216,7 @@ jobs:
 
           echo "Clé de signature prête."
 
-
-      - name: "Construire l'APK V11 Sync Payment Firebase"
+      - name: "Construire l'APK V12 Contact About Firebase"
         shell: bash
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -243,13 +233,12 @@ jobs:
           echo "Nettoyage du projet..."
           gradle clean
 
-          echo "Construction de l'APK V11..."
+          echo "Construction de l'APK V12..."
           gradle assembleRelease
 
-          echo "Construction V11 terminée."
+          echo "Construction V12 terminée."
 
-
-      - name: "Vérifier l'APK V11"
+      - name: "Vérifier l'APK V12"
         shell: bash
         run: |
           set -e
@@ -257,11 +246,11 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERREUR : APK V11 introuvable."
+            echo "ERREUR : APK V12 introuvable."
             exit 1
           fi
 
-          echo "APK V11 trouvé :"
+          echo "APK V12 trouvé :"
           ls -lh "$APK"
 
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
@@ -270,10 +259,9 @@ jobs:
 
           "$APKSIGNER" verify --verbose "$APK"
 
-          echo "Signature APK V11 vérifiée avec succès."
+          echo "Signature APK V12 vérifiée avec succès."
 
-
-      - name: "Afficher les informations APK V11"
+      - name: "Afficher les informations APK V12"
         shell: bash
         run: |
           set -e
@@ -281,18 +269,17 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           echo "=========================================="
-          echo "YOUNGEST'S BUSINESS V11"
-          echo "SYNC + PAYMENT + FIREBASE"
+          echo "YOUNGEST'S BUSINESS V12"
+          echo "CONTACT + À PROPOS + FIREBASE"
           echo "=========================================="
 
           ls -lh "$APK"
 
           echo "APK prêt."
 
-
-      - name: "Publier l'APK V11 Sync Payment Firebase"
+      - name: "Publier l'APK V12 Contact About Firebase"
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V11-SYNC-PAYMENT
+          name: YOUNGEST-BUSINESS-V12-CONTACT-ABOUT
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
