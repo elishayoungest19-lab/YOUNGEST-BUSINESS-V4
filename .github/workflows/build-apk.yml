@@ -1,4 +1,4 @@
-name: "Build YOUNGEST’S BUSINESS V16 Mobile Money RDC"
+name: "Build YOUNGEST BUSINESS V16 Mobile Money RDC"
 
 on:
   workflow_dispatch:
@@ -15,7 +15,6 @@ jobs:
       contents: read
 
     steps:
-
       - name: "Récupérer le dépôt"
         uses: actions/checkout@v4
 
@@ -30,133 +29,86 @@ jobs:
         with:
           packages: ""
 
-      - name: "Installer les composants Android nécessaires"
+      - name: "Installer les composants Android"
         shell: bash
         run: |
-          set -e
-
-          echo "Acceptation des licences Android..."
           yes | sdkmanager --licenses > /dev/null || true
-
-          echo "Installation de platform-tools..."
           sdkmanager --install "platform-tools"
-
-          echo "Installation de la plateforme Android 35..."
           sdkmanager --install "platforms;android-35"
-
-          echo "Installation de Build Tools 35.0.0..."
           sdkmanager --install "build-tools;35.0.0"
-
-          echo "Composants Android installés avec succès."
 
       - name: "Installer Gradle 8.9"
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: "Trouver et décompresser le projet V16"
+      - name: "Trouver le ZIP V16"
         shell: bash
         run: |
           set -e
 
-          echo "Recherche du ZIP V16..."
-
-          ZIP_FILE=$(find . -maxdepth 3 -type f \
-            -iname 'YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC*.zip' \
-            -print -quit)
+          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC*.zip" | head -1)
 
           if [ -z "$ZIP_FILE" ]; then
             echo "ERREUR : ZIP V16 introuvable."
-            echo "Fichiers présents dans le dépôt :"
             find . -maxdepth 3 -type f | sort
             exit 1
           fi
 
           echo "ZIP V16 trouvé : $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: "Extraire le projet V16"
+        shell: bash
+        run: |
+          set -e
 
           rm -rf v16-extracted
           mkdir -p v16-extracted
 
           unzip -q "$ZIP_FILE" -d v16-extracted
 
-          echo "Contenu extrait :"
-          find v16-extracted -maxdepth 3 -type f | sort | head -100
+          echo "Projet V16 extrait."
 
-      - name: "Détecter la racine du projet Android"
+      - name: "Détecter le projet Android"
         shell: bash
         run: |
           set -e
 
-          PROJECT_ROOT=$(find "$GITHUB_WORKSPACE/v16-extracted" \
-            -name settings.gradle \
-            -o -name settings.gradle.kts \
-            | head -1)
+          SETTINGS=$(find "$GITHUB_WORKSPACE/v16-extracted" -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -1)
 
-          if [ -z "$PROJECT_ROOT" ]; then
-            echo "ERREUR : settings.gradle introuvable."
+          if [ -z "$SETTINGS" ]; then
+            echo "ERREUR : projet Android introuvable."
             find "$GITHUB_WORKSPACE/v16-extracted" -maxdepth 5 -type f | sort
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_ROOT")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Projet Android trouvé dans : $PROJECT_DIR"
+          echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: "Afficher les informations V16"
+      - name: "Vérifier le projet V16"
         shell: bash
         run: |
-          echo "Projet : $PROJECT_DIR"
-          echo "Recherche des fichiers V16..."
-          find "$PROJECT_DIR" -maxdepth 3 -type f | sort | head -150
+          echo "=== PROJET V16 ==="
+          echo "$PROJECT_DIR"
+          echo "=== FICHIERS ==="
+          find "$PROJECT_DIR" -maxdepth 3 -type f | sort
 
-      - name: "Copier la configuration Firebase"
+      - name: "Configurer Firebase"
         shell: bash
         run: |
           set -e
 
-          FIREBASE_FILE=$(find "$GITHUB_WORKSPACE" -maxdepth 3 -type f \
-            \( -iname 'google-services*.json' -o -iname 'google-services (2).json' \) \
-            | head -1 || true)
+          FIREBASE=$(find "$GITHUB_WORKSPACE" -maxdepth 4 -type f -iname "google-services*.json" | head -1 || true)
 
-          if [ -n "$FIREBASE_FILE" ]; then
-            echo "Configuration Firebase trouvée : $FIREBASE_FILE"
-
+          if [ -n "$FIREBASE" ]; then
             mkdir -p "$PROJECT_DIR/app"
-
-            cp "$FIREBASE_FILE" "$PROJECT_DIR/app/google-services.json"
-
-            echo "google-services.json copié dans app/."
+            cp "$FIREBASE" "$PROJECT_DIR/app/google-services.json"
+            echo "Firebase configuré."
           else
-            echo "Aucun fichier Firebase trouvé dans le dépôt."
-          fi
-
-      - name: "Préparer le keystore de signature"
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -e
-
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_DIR/youngest-business-release.jks"
-
-            echo "Keystore préparé."
-
-            cat > "$PROJECT_DIR/keystore.properties" <<EOF
-storeFile=youngest-business-release.jks
-storePassword=$KEYSTORE_PASSWORD
-keyAlias=$KEY_ALIAS
-keyPassword=$KEY_PASSWORD
-EOF
-
-            echo "Configuration du keystore créée."
-          else
-            echo "Aucun KEYSTORE_BASE64 configuré."
-            echo "Le build continuera avec la configuration existante du projet."
+            echo "Configuration Firebase déjà présente ou non nécessaire."
           fi
 
       - name: "Rendre Gradle exécutable"
@@ -164,65 +116,43 @@ EOF
         run: |
           chmod +x "$PROJECT_DIR/gradlew" 2>/dev/null || true
 
-      - name: "Nettoyer le projet"
+      - name: "Nettoyer le projet V16"
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          set -e
           ./gradlew clean --no-daemon
 
       - name: "Construire APK Release V16"
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          set -e
-
           ./gradlew :app:assembleRelease --no-daemon
 
-      - name: "Vérifier l'APK V16"
+      - name: "Préparer APK V16"
         shell: bash
         run: |
           set -e
 
-          APK_FILE=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
-            -type f -name "*.apk" | head -1)
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name "*.apk" | head -1)
 
-          if [ -z "$APK_FILE" ]; then
-            echo "ERREUR : aucun APK Release trouvé."
+          if [ -z "$APK" ]; then
+            echo "ERREUR : APK V16 introuvable."
             exit 1
           fi
 
-          echo "APK trouvé : $APK_FILE"
+          mkdir -p final-apk
 
-          mkdir -p "$GITHUB_WORKSPACE/final-apk"
+          cp "$APK" "final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
 
-          cp "$APK_FILE" \
-            "$GITHUB_WORKSPACE/final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
+          echo "APK V16 préparé :"
+          ls -lh "final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
 
-          echo "APK V16 préparé."
-
-      - name: "Vérifier la signature APK"
+      - name: "Vérifier la signature"
         shell: bash
         run: |
-          set -e
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
 
-          APK="$GITHUB_WORKSPACE/final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
-
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-
-          if [ -f "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --verbose "$APK"
-            echo "Signature APK vérifiée avec succès."
-          else
-            echo "apksigner introuvable."
-          fi
-
-      - name: "Afficher la taille finale"
-        shell: bash
-        run: |
-          ls -lh "$GITHUB_WORKSPACE/final-apk/YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC.apk"
-
-      - name: "Publier l'APK V16"
+      - name: "Publier APK V16"
         uses: actions/upload-artifact@v4
         with:
           name: YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC
