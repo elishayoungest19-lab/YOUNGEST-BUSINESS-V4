@@ -37,18 +37,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver le ZIP V17
+      - name: Trouver le ZIP V17 corrigé
         id: find_zip
         shell: bash
         run: |
           set -e
 
           ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.zip' \
-            | head -n 1)
+            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM*.zip' \
+            | sort \
+            | tail -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : ZIP V17 FINAL introuvable."
+            echo "ERREUR : ZIP V17 corrigé introuvable."
             echo "ZIP disponibles :"
             find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
@@ -197,6 +198,9 @@ jobs:
 
       - name: Configurer la signature Android
         shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
@@ -276,13 +280,13 @@ jobs:
           mkdir -p release-apk
 
           cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.apk"
+            "release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE.apk"
 
           ls -lh release-apk/
 
       - name: Publier l'APK V17
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL
-          path: release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.apk
+          name: YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE
+          path: release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE.apk
           if-no-files-found: error
