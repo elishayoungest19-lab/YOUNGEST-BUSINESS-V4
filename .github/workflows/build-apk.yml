@@ -43,6 +43,8 @@ jobs:
         run: |
           set -e
 
+          echo "Recherche du ZIP V18..."
+
           ZIP=$(find . -maxdepth 3 -type f \
             -name 'YOUNGEST-BUSINESS-V18-*.zip' \
             | sort \
@@ -50,7 +52,6 @@ jobs:
 
           if [ -z "$ZIP" ]; then
             echo "ERREUR : ZIP V18 introuvable."
-            echo "ZIP disponibles :"
             find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
           fi
@@ -95,22 +96,42 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          grep -q "applicationId 'com.aistudio.youngestbiz.mbkz'" \
+          echo "===== VERIFICATION V18 ====="
+
+          grep -Eq 'applicationId[[:space:]]+[\"'\"']com\.aistudio\.youngestbiz\.mbkz[\"'\"']' \
             app/build.gradle
 
-          grep -q "versionCode 15" \
+          grep -Eq 'versionCode[[:space:]]+15' \
             app/build.gradle
 
-          grep -q "versionName '1.9.1'" \
+          grep -Eq 'versionName[[:space:]]+[\"'\"']1\.9\.1[\"'\"']' \
             app/build.gradle
 
-          grep -q 'clientTransferPage' \
-            app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          grep -q 'findKnownWalletName' \
-            app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          test -f "$MAIN"
 
-          echo "Identité V18 vérifiée."
+          grep -q 'clientTransferPage' "$MAIN"
+
+          grep -q 'verifyWalletSimulation' "$MAIN"
+
+          grep -q 'M-Pesa' "$MAIN"
+          grep -q 'Airtel Money' "$MAIN"
+          grep -q 'Orange Money' "$MAIN"
+          grep -q 'Afrimoney' "$MAIN"
+
+          grep -q 'Titulaire du portefeuille' "$MAIN"
+
+          echo "V18 vérifié :"
+          echo "- applicationId OK"
+          echo "- versionCode 15 OK"
+          echo "- versionName 1.9.1 OK"
+          echo "- espace client transfert OK"
+          echo "- vérification portefeuille OK"
+          echo "- M-Pesa OK"
+          echo "- Airtel Money OK"
+          echo "- Orange Money OK"
+          echo "- Afrimoney OK"
 
       - name: Configurer Firebase
         shell: bash
@@ -177,7 +198,7 @@ jobs:
 
           echo "Alias Release détecté."
 
-      - name: Nettoyer et compiler V18 Release
+      - name: Nettoyer le projet V18
         shell: bash
         run: |
           set -e
@@ -185,6 +206,15 @@ jobs:
           cd "$PROJECT_DIR"
 
           gradle clean --no-daemon
+
+      - name: Compiler APK V18 Release
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          echo "===== COMPILATION V18 RELEASE ====="
 
           gradle :app:assembleRelease --no-daemon
 
@@ -204,18 +234,18 @@ jobs:
             exit 1
           fi
 
-          echo "APK V18 : $APK"
+          echo "APK V18 généré : $APK"
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify \
             --verbose \
             "$APK"
 
-          echo "APK V18 Release signé et valide."
+          echo "Signature APK V18 valide."
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      - name: Préparer l'APK V18
+      - name: Préparer APK V18
         shell: bash
         run: |
           set -e
