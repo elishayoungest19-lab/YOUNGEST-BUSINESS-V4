@@ -68,20 +68,21 @@ jobs:
           unzip -o "${{ steps.find_zip.outputs.zip }}" \
             -d v16-extracted
 
-          echo "Contenu extrait :"
-          find v16-extracted -maxdepth 3 -type f | sort | head -200
+          echo "Projet V16 extrait."
 
       - name: Détecter le projet Android
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find v16-extracted -name settings.gradle -o -name settings.gradle.kts \
+          PROJECT_DIR=$(find v16-extracted \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print \
             | head -n 1 \
             | xargs -r dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERREUR : settings.gradle introuvable."
+            echo "ERREUR : projet Android introuvable."
             exit 1
           fi
 
@@ -95,13 +96,13 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "===== settings.gradle ====="
+          echo "===== SETTINGS ====="
           cat settings.gradle || true
 
-          echo "===== build.gradle ====="
+          echo "===== BUILD GRADLE ====="
           cat build.gradle || true
 
-          echo "===== app/build.gradle ====="
+          echo "===== APP BUILD GRADLE ====="
           cat app/build.gradle
 
           echo "===== README V16 ====="
@@ -114,20 +115,24 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          if [ -f "google-services.json" ]; then
-            echo "google-services.json déjà présent à la racine."
-          elif [ -f "app/google-services.json" ]; then
-            echo "google-services.json déjà présent dans app/."
+          if [ -f "app/google-services.json" ]; then
+            echo "Firebase déjà configuré."
+
+          elif [ -f "google-services.json" ]; then
+            cp google-services.json app/google-services.json
+            echo "Firebase copié vers app/."
+
           else
-            SOURCE=$(find "$GITHUB_WORKSPACE" -type f \
+            SOURCE=$(find "$GITHUB_WORKSPACE" \
+              -type f \
               -name 'google-services.json' \
               | head -n 1)
 
-            if [ -z "$SOURCE" ]; then
-              echo "AVERTISSEMENT : google-services.json introuvable."
-            else
+            if [ -n "$SOURCE" ]; then
               cp "$SOURCE" app/google-services.json
               echo "Firebase configuré depuis : $SOURCE"
+            else
+              echo "AVERTISSEMENT : google-services.json introuvable."
             fi
           fi
 
@@ -141,20 +146,20 @@ jobs:
           cd "$PROJECT_DIR"
 
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : le Secret KEYSTORE_BASE64 est vide ou absent."
+            echo "ERREUR : KEYSTORE_BASE64 est absent."
             exit 1
           fi
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
           if [ ! -s release-keystore.jks ]; then
-            echo "ERREUR : release-keystore.jks est vide."
+            echo "ERREUR : keystore vide."
             exit 1
           fi
 
-          echo "Keystore créé avec succès."
+          echo "Keystore préparé."
 
-      - name: Vérifier l'alias du keystore
+      - name: Détecter automatiquement l'alias du keystore
         shell: bash
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -163,14 +168,23 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "Vérification du keystore..."
+          echo "Lecture de l'alias réel du keystore..."
 
-          keytool -list \
+          ALIAS=$(keytool -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            | grep -q "youngestbusiness"
+            -v 2>/dev/null \
+            | awk -F': ' '/Alias name:/ {print $2; exit}')
 
-          echo "Alias youngestbusiness trouvé dans le keystore."
+          if [ -z "$ALIAS" ]; then
+            echo "ERREUR : impossible de détecter l'alias."
+            echo "Le mot de passe du keystore est peut-être incorrect."
+            exit 1
+          fi
+
+          echo "Alias détecté avec succès."
+
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
       - name: Nettoyer le projet V16
         shell: bash
@@ -185,15 +199,14 @@ jobs:
         shell: bash
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: youngestbusiness
           ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "Construction de l'APK V16..."
-          echo "Alias utilisé : youngestbusiness"
+          echo "Construction APK V16..."
+          echo "Alias du keystore détecté automatiquement."
 
           gradle :app:assembleRelease --no-daemon
 
@@ -224,7 +237,8 @@ jobs:
 
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
-          "$APKSIGNER" verify --verbose "$PROJECT_DIR/$APK_PATH"
+          "$APKSIGNER" verify --verbose \
+            "$PROJECT_DIR/$APK_PATH"
 
           echo "Signature APK valide."
 
@@ -235,13 +249,21 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "===== APK FINAL V16 ====="
+          echo "================================"
+          echo "       YOUNGEST'S BUSINESS"
+          echo "             V16"
+          echo "     MOBILE MONEY RDC"
+          echo "================================"
+
+          echo "APK :"
           ls -lh "$APK_PATH"
 
-          echo "===== APPLICATION ID ====="
+          echo ""
+          echo "Application ID :"
           grep -n "applicationId" app/build.gradle || true
 
-          echo "===== VERSION ====="
+          echo ""
+          echo "Version :"
           grep -n "versionName" app/build.gradle || true
 
       - name: Publier APK V16
