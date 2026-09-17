@@ -43,7 +43,7 @@ jobs:
         run: |
           set -e
 
-          echo "===== RECHERCHE ZIP V18 ====="
+          echo "===== RECHERCHE DU ZIP V18 ====="
 
           ZIP=$(find . -maxdepth 3 -type f \
             -name 'YOUNGEST-BUSINESS-V18-*.zip' \
@@ -92,24 +92,46 @@ jobs:
           echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Afficher les informations V18
+      - name: Vérifier la version V18
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "===== PROJET V18 ====="
+          echo "===== VERSION V18 ====="
 
-          if [ -f app/build.gradle ]; then
-            echo "===== app/build.gradle ====="
-            cat app/build.gradle
+          grep -E "applicationId|versionCode|versionName" app/build.gradle
+
+          grep -q "versionCode 15" app/build.gradle
+          grep -q "versionName '1.9.1'" app/build.gradle
+
+          echo "Version V18 confirmée."
+
+      - name: Vérifier les fonctions V18
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          if [ ! -f "$MAIN" ]; then
+            echo "ERREUR : MainActivity.java introuvable."
+            exit 1
           fi
 
-          if [ -f app/build.gradle.kts ]; then
-            echo "===== app/build.gradle.kts ====="
-            cat app/build.gradle.kts
-          fi
+          echo "===== FONCTIONS V18 ====="
+
+          grep -q "clientTransferPage" "$MAIN"
+          grep -q "verifyWalletSimulation" "$MAIN"
+          grep -q "M-Pesa" "$MAIN"
+          grep -q "Airtel Money" "$MAIN"
+          grep -q "Orange Money" "$MAIN"
+          grep -q "Afrimoney" "$MAIN"
+
+          echo "Fonctions V18 présentes."
 
       - name: Configurer Firebase
         shell: bash
@@ -172,17 +194,6 @@ jobs:
             exit 1
           fi
 
-          echo "Keystore Release préparé."
-
-      - name: Détecter automatiquement l'alias du keystore
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
           ALIAS=$(keytool \
             -list \
             -keystore release-keystore.jks \
@@ -196,45 +207,24 @@ jobs:
           fi
 
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
+          echo "Keystore Release préparé."
           echo "Alias Release détecté."
 
-      - name: Configurer la signature Release
+      - name: Vérifier la configuration de signature V18
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          if [ ! -f app/build.gradle ]; then
-            echo "ERREUR : app/build.gradle introuvable."
-            exit 1
-          fi
+          echo "===== SIGNATURE V18 ====="
 
-          cat >> app/build.gradle <<'EOF'
+          grep -A12 -B2 "signingConfigs" app/build.gradle || true
 
-          android {
-              signingConfigs {
-                  release {
-                      storeFile file("../release-keystore.jks")
-                      storePassword System.getenv("KEYSTORE_PASSWORD")
-                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword System.getenv("KEY_PASSWORD")
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-          EOF
-
-          echo "Signature Release configurée."
+          echo "Configuration de signature vérifiée."
 
       - name: Nettoyer le projet V18
         shell: bash
@@ -247,19 +237,18 @@ jobs:
 
       - name: Compiler APK V18 Release
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "===== COMPILATION V18 RELEASE ====="
+          echo "====================================="
+          echo "     COMPILATION V18 RELEASE"
+          echo "====================================="
 
           gradle :app:assembleRelease --no-daemon
 
-      - name: Vérifier APK V18
+      - name: Vérifier APK V18 et sa signature
         shell: bash
         run: |
           set -e
@@ -277,14 +266,21 @@ jobs:
 
           echo "APK V18 généré : $APK"
 
-          echo "===== VERIFICATION SIGNATURE ====="
+          echo "===== VERIFICATION SIGNATURE APK ====="
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify \
             --verbose \
             "$APK"
 
-          echo "Signature Release valide."
+          echo "APK V18 Release signé et valide."
+
+          echo "===== EMPREINTE DU CERTIFICAT ====="
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify \
+            --print-certs \
+            "$APK"
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
@@ -293,17 +289,19 @@ jobs:
         run: |
           set -e
 
+          rm -rf release-apk
           mkdir -p release-apk
 
           cp "$APK_PATH" \
             "release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk"
 
+          echo "===== APK FINAL ====="
           ls -lh release-apk/
 
       - name: Publier APK V18 Release
         uses: actions/upload-artifact@v4
         with:
           name: YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE
-          path: release-apk/YOUNEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
+          path: release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
           if-no-files-found: error
           retention-days: 30
