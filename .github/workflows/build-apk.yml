@@ -1,4 +1,4 @@
-name: Build Android APK V16 Mobile Money RDC
+name: Build Android APK V17 Mobile Money Direct API
 
 on:
   workflow_dispatch:
@@ -8,11 +8,10 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V16 Mobile Money RDC
+    name: Build Android APK V17 Mobile Money Direct API
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
@@ -38,46 +37,47 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver le ZIP V16
+      - name: Trouver le ZIP V17
         id: find_zip
         shell: bash
         run: |
           set -e
 
           ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC*.zip' \
+            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.zip' \
             | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : ZIP V16 introuvable."
-            find . -maxdepth 3 -type f | sort
+            echo "ERREUR : ZIP V17 FINAL introuvable."
+            echo "ZIP disponibles :"
+            find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
           fi
 
-          echo "ZIP V16 trouvé : $ZIP"
+          echo "ZIP V17 trouvé : $ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Extraire le projet V16
+      - name: Extraire le projet V17
         shell: bash
         run: |
           set -e
 
-          rm -rf v16-extracted
-          mkdir -p v16-extracted
+          rm -rf v17-extracted
+          mkdir -p v17-extracted
 
           unzip -o "${{ steps.find_zip.outputs.zip }}" \
-            -d v16-extracted
+            -d v17-extracted
 
-          echo "Projet V16 extrait."
+          echo "Projet V17 extrait."
 
       - name: Détecter le projet Android
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find v16-extracted \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print \
+          PROJECT_DIR=$(find v17-extracted \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
             | head -n 1 \
             | xargs -r dirname)
 
@@ -89,7 +89,7 @@ jobs:
           echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Vérifier le projet V16
+      - name: Vérifier le projet V17
         shell: bash
         run: |
           set -e
@@ -97,16 +97,16 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "===== SETTINGS ====="
-          cat settings.gradle || true
+          cat settings.gradle 2>/dev/null || true
+          cat settings.gradle.kts 2>/dev/null || true
 
           echo "===== BUILD GRADLE ====="
-          cat build.gradle || true
+          cat build.gradle 2>/dev/null || true
+          cat build.gradle.kts 2>/dev/null || true
 
           echo "===== APP BUILD GRADLE ====="
-          cat app/build.gradle
-
-          echo "===== README V16 ====="
-          cat README-V16-TRANSFERT-MOBILE-MONEY-RDC.md || true
+          cat app/build.gradle 2>/dev/null || true
+          cat app/build.gradle.kts 2>/dev/null || true
 
       - name: Configurer Firebase
         shell: bash
@@ -140,6 +140,8 @@ jobs:
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
@@ -147,6 +149,16 @@ jobs:
 
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "ERREUR : KEYSTORE_BASE64 est absent."
+            exit 1
+          fi
+
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "ERREUR : KEYSTORE_PASSWORD est absent."
+            exit 1
+          fi
+
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "ERREUR : KEY_PASSWORD est absent."
             exit 1
           fi
 
@@ -168,25 +180,52 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "Lecture de l'alias réel du keystore..."
-
-          ALIAS=$(keytool -list \
+          ALIAS=$(keytool \
+            -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            -v 2>/dev/null \
+            -v \
             | awk -F': ' '/Alias name:/ {print $2; exit}')
 
           if [ -z "$ALIAS" ]; then
-            echo "ERREUR : impossible de détecter l'alias."
-            echo "Le mot de passe du keystore est peut-être incorrect."
+            echo "ERREUR : alias du keystore introuvable."
             exit 1
           fi
 
           echo "Alias détecté avec succès."
-
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
-      - name: Nettoyer le projet V16
+      - name: Configurer la signature Android
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          cat >> app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("../release-keystore.jks")
+                      storePassword System.getenv("KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("KEY_PASSWORD")
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
+      - name: Nettoyer le projet V17
         shell: bash
         run: |
           set -e
@@ -195,81 +234,48 @@ jobs:
 
           gradle clean --no-daemon
 
-      - name: Construire l'APK Release V16
+      - name: Compiler APK V17 Release
         shell: bash
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$PROJECT_DIR"
-
-          echo "Construction APK V16..."
-          echo "Alias du keystore détecté automatiquement."
 
           gradle :app:assembleRelease --no-daemon
 
-      - name: Vérifier l'APK V16
+      - name: Vérifier APK généré
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR"
-
-          APK=$(find app/build/outputs/apk/release \
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
             -type f \
             -name '*.apk' \
             | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V16 introuvable."
+            echo "ERREUR : APK V17 introuvable."
             exit 1
           fi
 
-          echo "APK trouvé : $APK"
+          echo "APK V17 généré : $APK"
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      - name: Vérifier la signature APK
+      - name: Préparer le nom final de l'APK
         shell: bash
         run: |
           set -e
 
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          mkdir -p release-apk
 
-          "$APKSIGNER" verify --verbose \
-            "$PROJECT_DIR/$APK_PATH"
+          cp "$APK_PATH" \
+            "release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.apk"
 
-          echo "Signature APK valide."
+          ls -lh release-apk/
 
-      - name: Afficher les informations finales
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "================================"
-          echo "       YOUNGEST'S BUSINESS"
-          echo "             V16"
-          echo "     MOBILE MONEY RDC"
-          echo "================================"
-
-          echo "APK :"
-          ls -lh "$APK_PATH"
-
-          echo ""
-          echo "Application ID :"
-          grep -n "applicationId" app/build.gradle || true
-
-          echo ""
-          echo "Version :"
-          grep -n "versionName" app/build.gradle || true
-
-      - name: Publier APK V16
+      - name: Publier l'APK V17
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V16-TRANSFERT-MOBILE-MONEY-RDC
-          path: ${{ env.PROJECT_DIR }}/${{ env.APK_PATH }}
+          name: YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL
+          path: release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL.apk
           if-no-files-found: error
-          retention-days: 30
