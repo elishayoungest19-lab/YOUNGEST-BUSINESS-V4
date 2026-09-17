@@ -1,4 +1,4 @@
-name: Build Android APK V17 Mobile Money Direct API
+name: Build Android APK V18 Mobile Money Direct API
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V17 Mobile Money Direct API
+    name: Build Android APK V18 Mobile Money Direct API
     runs-on: ubuntu-latest
 
     steps:
@@ -37,51 +37,48 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver automatiquement le ZIP V17 corrigé
+      - name: Trouver automatiquement le ZIP V18
         id: find_zip
         shell: bash
         run: |
           set -e
 
-          echo "Recherche du ZIP V17 corrigé..."
-
           ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-*.zip' \
+            -name 'YOUNGEST-BUSINESS-V18-*.zip' \
             | sort \
             | tail -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : aucun ZIP V17 corrigé trouvé."
-            echo "ZIP disponibles dans le dépôt :"
+            echo "ERREUR : ZIP V18 introuvable."
+            echo "ZIP disponibles :"
             find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
           fi
 
-          echo "ZIP V17 trouvé : $ZIP"
+          echo "ZIP V18 trouvé : $ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Extraire le projet V17
+      - name: Extraire le projet V18
         shell: bash
         run: |
           set -e
 
-          rm -rf v17-extracted
-          mkdir -p v17-extracted
+          rm -rf v18-extracted
+          mkdir -p v18-extracted
 
           unzip -o "${{ steps.find_zip.outputs.zip }}" \
-            -d v17-extracted
+            -d v18-extracted
 
-          echo "Projet V17 extrait."
+          echo "Projet V18 extrait."
 
       - name: Détecter le projet Android
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find v17-extracted \
+          PROJECT_DIR=$(find v18-extracted \
             \( -name settings.gradle -o -name settings.gradle.kts \) \
-            | head -n 1 \
-            | xargs -r dirname)
+            -print | head -n 1 | xargs -r dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERREUR : projet Android introuvable."
@@ -91,24 +88,29 @@ jobs:
           echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Vérifier le projet V17
+      - name: Vérifier identité V18
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "===== SETTINGS ====="
-          cat settings.gradle 2>/dev/null || true
-          cat settings.gradle.kts 2>/dev/null || true
+          grep -q "applicationId 'com.aistudio.youngestbiz.mbkz'" \
+            app/build.gradle
 
-          echo "===== BUILD GRADLE ====="
-          cat build.gradle 2>/dev/null || true
-          cat build.gradle.kts 2>/dev/null || true
+          grep -q "versionCode 15" \
+            app/build.gradle
 
-          echo "===== APP BUILD GRADLE ====="
-          cat app/build.gradle 2>/dev/null || true
-          cat app/build.gradle.kts 2>/dev/null || true
+          grep -q "versionName '1.9.1'" \
+            app/build.gradle
+
+          grep -q 'clientTransferPage' \
+            app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+
+          grep -q 'findKnownWalletName' \
+            app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+
+          echo "Identité V18 vérifiée."
 
       - name: Configurer Firebase
         shell: bash
@@ -138,7 +140,7 @@ jobs:
             fi
           fi
 
-      - name: Préparer le keystore de release
+      - name: Préparer le keystore Release
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -149,44 +151,19 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : KEYSTORE_BASE64 est absent."
-            exit 1
-          fi
-
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "ERREUR : KEYSTORE_PASSWORD est absent."
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "ERREUR : KEY_PASSWORD est absent."
-            exit 1
-          fi
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          if [ ! -s release-keystore.jks ]; then
-            echo "ERREUR : keystore vide."
-            exit 1
-          fi
-
-          echo "Keystore préparé."
-
-      - name: Détecter automatiquement l'alias du keystore
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
+          test -s release-keystore.jks
 
           ALIAS=$(keytool \
             -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            -v \
+            -v 2>/dev/null \
             | awk -F': ' '/Alias name:/ {print $2; exit}')
 
           if [ -z "$ALIAS" ]; then
@@ -194,43 +171,13 @@ jobs:
             exit 1
           fi
 
-          echo "Alias du keystore détecté."
-
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
-      - name: Configurer la signature Android
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -e
+          echo "Alias Release détecté."
 
-          cd "$PROJECT_DIR"
-
-          cat >> app/build.gradle <<'EOF'
-
-          android {
-              signingConfigs {
-                  release {
-                      storeFile file("../release-keystore.jks")
-                      storePassword System.getenv("KEYSTORE_PASSWORD")
-                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword System.getenv("KEY_PASSWORD")
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-          EOF
-
-          echo "Signature Android configurée."
-
-      - name: Nettoyer le projet V17
+      - name: Nettoyer et compiler V18 Release
         shell: bash
         run: |
           set -e
@@ -239,42 +186,36 @@ jobs:
 
           gradle clean --no-daemon
 
-      - name: Compiler APK V17 Release
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "===== SIGNATURE V17 ====="
-          echo "Alias détecté : $ANDROID_KEY_ALIAS"
-          echo "Keystore présent :"
-          ls -lh release-keystore.jks
-
           gradle :app:assembleRelease --no-daemon
 
-      - name: Vérifier APK généré
+      - name: Vérifier APK et signature
         shell: bash
         run: |
           set -e
 
-          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
+          APK=$(find \
+            "$PROJECT_DIR/app/build/outputs/apk/release" \
             -type f \
             -name '*.apk' \
             | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V17 introuvable."
+            echo "ERREUR : APK V18 introuvable."
             exit 1
           fi
 
-          echo "APK V17 généré : $APK"
+          echo "APK V18 : $APK"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify \
+            --verbose \
+            "$APK"
+
+          echo "APK V18 Release signé et valide."
+
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      - name: Préparer le nom final de l'APK
+      - name: Préparer l'APK V18
         shell: bash
         run: |
           set -e
@@ -282,13 +223,14 @@ jobs:
           mkdir -p release-apk
 
           cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk"
+            "release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk"
 
           ls -lh release-apk/
 
-      - name: Publier l'APK V17 Release
+      - name: Publier APK V18 Release
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE
-          path: release-apk/YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
+          name: YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE
+          path: release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
           if-no-files-found: error
+          retention-days: 30
