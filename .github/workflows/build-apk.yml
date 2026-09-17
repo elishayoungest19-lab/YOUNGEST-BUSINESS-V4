@@ -37,20 +37,22 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver le ZIP V17 corrigé
+      - name: Trouver automatiquement le ZIP V17 corrigé
         id: find_zip
         shell: bash
         run: |
           set -e
 
+          echo "Recherche du ZIP V17 corrigé..."
+
           ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM*.zip' \
+            -name 'YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-*.zip' \
             | sort \
             | tail -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : ZIP V17 corrigé introuvable."
-            echo "ZIP disponibles :"
+            echo "ERREUR : aucun ZIP V17 corrigé trouvé."
+            echo "ZIP disponibles dans le dépôt :"
             find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
           fi
@@ -280,13 +282,13 @@ jobs:
           mkdir -p release-apk
 
           cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE.apk"
+            "release-apk/YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk"
 
           ls -lh release-apk/
 
-      - name: Publier l'APK V17
+      - name: Publier l'APK V17 Release
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE
-          path: release-apk/YOUNGEST-BUSINESS-V17-TRANSFERT-DIRECT-API-PIN-AUTO-NOM-FINAL-CORRIGE.apk
+          name: YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE
+          path: release-apk/YOUNGEST-BUSINESS-V17-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
           if-no-files-found: error
