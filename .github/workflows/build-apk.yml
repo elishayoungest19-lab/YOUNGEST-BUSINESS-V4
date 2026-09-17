@@ -76,8 +76,7 @@ jobs:
           set -e
 
           PROJECT_DIR=$(find v17-extracted \
-            -name settings.gradle \
-            -o -name settings.gradle.kts \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
             | head -n 1 \
             | xargs -r dirname)
 
@@ -192,14 +191,12 @@ jobs:
             exit 1
           fi
 
-          echo "Alias détecté avec succès."
+          echo "Alias du keystore détecté."
+
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
       - name: Configurer la signature Android
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
@@ -225,6 +222,8 @@ jobs:
           }
           EOF
 
+          echo "Signature Android configurée."
+
       - name: Nettoyer le projet V17
         shell: bash
         run: |
@@ -236,10 +235,18 @@ jobs:
 
       - name: Compiler APK V17 Release
         shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$PROJECT_DIR"
+
+          echo "===== SIGNATURE V17 ====="
+          echo "Alias détecté : $ANDROID_KEY_ALIAS"
+          echo "Keystore présent :"
+          ls -lh release-keystore.jks
 
           gradle :app:assembleRelease --no-daemon
 
