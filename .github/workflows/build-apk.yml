@@ -49,22 +49,31 @@ jobs:
         run: |
           set -e
 
-          EXPECTED="YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE-REQUESTS-FIX.zip"
+          EXPECTED="YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE-REQUESTS-FIX-2.zip"
 
-          echo "Recherche du fichier obligatoire :"
+          echo "=============================================="
+          echo "RECHERCHE DU ZIP V19 CORRIGE"
+          echo "=============================================="
+          echo "Fichier obligatoire :"
           echo "$EXPECTED"
 
           ZIP=$(find . -maxdepth 3 -type f -name "$EXPECTED" -print -quit)
 
           if [ -z "$ZIP" ]; then
+            echo ""
             echo "ERREUR : le ZIP V19 Requests Fix est introuvable."
-            echo "ZIP attendue : $EXPECTED"
-            echo "ZIP disponibles :"
+            echo ""
+            echo "ZIP disponibles dans le depot :"
             find . -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo "ZIP V19 CORRIGEE TROUVEE : $ZIP"
+          echo ""
+          echo "=============================================="
+          echo "ZIP V19 CORRIGEE TROUVEE :"
+          echo "$ZIP"
+          echo "=============================================="
+
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
       - name: Extraire le projet V19
@@ -75,7 +84,8 @@ jobs:
           rm -rf v19-extracted
           mkdir -p v19-extracted
 
-          echo "Extraction de : $ZIP_PATH"
+          echo "Extraction de :"
+          echo "$ZIP_PATH"
 
           unzip -q "$ZIP_PATH" -d v19-extracted
 
@@ -129,7 +139,9 @@ jobs:
 
           cd "$ANDROID_ROOT"
 
-          echo "Verification du code de synchronisation..."
+          echo "=============================================="
+          echo "VERIFICATION DU CODE REQUESTS FIX"
+          echo "=============================================="
 
           if ! grep -R -q "yb_loan_requests" app/src/main/java; then
             echo "ERREUR : yb_loan_requests introuvable."
@@ -159,8 +171,10 @@ jobs:
             mkdir -p app
             cp google-services.json app/google-services.json
             echo "google-services.json configure."
+
           elif [ -f app/google-services.json ]; then
             echo "google-services.json deja present."
+
           else
             echo "ERREUR : google-services.json introuvable."
             exit 1
@@ -192,7 +206,11 @@ jobs:
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          ALIAS=$(keytool -list -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" -v | awk -F': ' '/Alias name:/ {print $2; exit}')
+          ALIAS=$(keytool \
+            -list \
+            -keystore release-keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -v | awk -F': ' '/Alias name:/ {print $2; exit}')
 
           if [ -z "$ALIAS" ]; then
             echo "ERREUR : alias du keystore introuvable."
@@ -216,7 +234,10 @@ jobs:
             exit 1
           fi
 
-          keytool -list -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null
+          keytool \
+            -list \
+            -keystore release-keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" >/dev/null
 
           echo "Keystore Release valide."
 
@@ -253,7 +274,11 @@ jobs:
 
           cd "$ANDROID_ROOT"
 
-          APK=$(find app/build/outputs/apk/release -type f -name "*.apk" -print -quit)
+          APK=$(find \
+            app/build/outputs/apk/release \
+            -type f \
+            -name "*.apk" \
+            -print -quit)
 
           if [ -z "$APK" ]; then
             echo "ERREUR : APK non trouve."
@@ -266,6 +291,10 @@ jobs:
 
           if [ ! -x "$APKSIGNER" ]; then
             echo "ERREUR : apksigner introuvable."
+            find "$ANDROID_HOME/build-tools" \
+              -name "apksigner" \
+              -type f \
+              -print
             exit 1
           fi
 
@@ -278,7 +307,11 @@ jobs:
         run: |
           set -e
 
-          APK=$(find "$ANDROID_ROOT/app/build/outputs/apk/release" -type f -name "*.apk" -print -quit)
+          APK=$(find \
+            "$ANDROID_ROOT/app/build/outputs/apk/release" \
+            -type f \
+            -name "*.apk" \
+            -print -quit)
 
           if [ -z "$APK" ]; then
             echo "ERREUR : APK Release introuvable."
@@ -287,7 +320,8 @@ jobs:
 
           mkdir -p final-apk
 
-          cp "$APK" "final-apk/YOUNGEST-BUSINESS-V19-REQUESTS-SYNC-FIX.apk"
+          cp "$APK" \
+            "final-apk/YOUNGEST-BUSINESS-V19-REQUESTS-SYNC-FIX.apk"
 
           echo "APK final prepare."
 
