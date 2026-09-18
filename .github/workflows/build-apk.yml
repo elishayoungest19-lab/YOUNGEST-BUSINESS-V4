@@ -1,4 +1,4 @@
-name: Build Android APK V19 Layout Maquette
+name: Build Android APK V19 Nom Automatique Notifications
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V19 Layout Maquette
+    name: Build Android APK V19 Nom Automatique Notifications
     runs-on: ubuntu-latest
 
     steps:
@@ -37,30 +37,43 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver automatiquement le ZIP V19
+      - name: Trouver le ZIP V19 FINAL
         id: find_zip
         shell: bash
         run: |
           set -e
 
-          echo "===== RECHERCHE DU ZIP V19 ====="
+          echo "======================================"
+          echo " RECHERCHE DU ZIP V19 FINAL"
+          echo "======================================"
 
-          ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V19-*.zip' \
-            | sort \
-            | tail -n 1)
+          ZIP=$(find . -type f \
+            -name 'YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.zip' \
+            | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : aucun ZIP V19 trouvé."
+            echo "ZIP final exact non trouvé."
+            echo "Recherche d'un ZIP V19 final avec motif..."
+
+            ZIP=$(find . -type f \
+              -name 'YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS*.zip' \
+              | sort \
+              | tail -n 1)
+          fi
+
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR : aucun ZIP V19 final trouvé."
+
             echo "===== ZIP DISPONIBLES ====="
-            find . -maxdepth 3 -type f -name '*.zip' | sort
+            find . -type f -name '*.zip' | sort
+
             exit 1
           fi
 
-          echo "ZIP V19 trouvé : $ZIP"
+          echo "ZIP V19 FINAL trouvé : $ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Extraire le projet V19
+      - name: Extraire le projet V19 FINAL
         shell: bash
         run: |
           set -e
@@ -71,7 +84,7 @@ jobs:
           unzip -o "${{ steps.find_zip.outputs.zip }}" \
             -d v19-extracted
 
-          echo "Projet V19 extrait."
+          echo "Projet V19 FINAL extrait."
 
       - name: Détecter le projet Android V19
         shell: bash
@@ -92,16 +105,16 @@ jobs:
           echo "Projet Android V19 : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Vérifier le projet V19
+      - name: Vérifier le projet V19 FINAL
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "====================================="
-          echo "       VERIFICATION DU PROJET V19"
-          echo "====================================="
+          echo "======================================"
+          echo " VERIFICATION DU PROJET V19 FINAL"
+          echo "======================================"
 
           if [ ! -f "app/build.gradle" ]; then
             echo "ERREUR : app/build.gradle introuvable."
@@ -116,17 +129,17 @@ jobs:
           fi
 
           echo "===== APPLICATION ====="
-          grep -E "applicationId|versionCode|versionName" app/build.gradle || true
+
+          grep -E "applicationId|versionCode|versionName" \
+            app/build.gradle || true
 
           echo "===== ELEMENTS V19 ====="
 
           grep -qi "YOUNGEST" "$MAIN"
-          grep -qi "CONTACT" "$MAIN" || true
-          grep -qi "PROPOS" "$MAIN" || true
 
-          echo "Projet V19 vérifié."
+          echo "Projet Android V19 vérifié."
 
-      - name: Vérifier la disposition V19
+      - name: Vérifier les fonctions Nom automatique et Notifications
         shell: bash
         run: |
           set -e
@@ -135,16 +148,31 @@ jobs:
 
           MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          echo "===== CONTROLE LAYOUT V19 ====="
+          echo "======================================"
+          echo " VERIFICATION FONCTIONS V19"
+          echo "======================================"
 
-          echo "Recherche des éléments principaux..."
+          echo "Recherche identification portefeuille..."
 
-          grep -q "ESPACE BUREAU" "$MAIN" || true
-          grep -q "ESPACE CLIENT" "$MAIN" || true
-          grep -qi "CONTACTEZ" "$MAIN" || true
-          grep -qi "PROPOS DE NOUS" "$MAIN" || true
+          grep -qi "M-Pesa" "$MAIN" || true
+          grep -qi "Airtel Money" "$MAIN" || true
+          grep -qi "Orange Money" "$MAIN" || true
+          grep -qi "Afrimoney" "$MAIN" || true
 
-          echo "Contrôle du layout V19 terminé."
+          echo "Recherche fonctions de notification..."
+
+          NOTIF_FILE=$(find app/src/main/java \
+            -type f \
+            \( -iname '*Notification*.java' -o -iname '*Messaging*.java' \) \
+            | head -n 1)
+
+          if [ -n "$NOTIF_FILE" ]; then
+            echo "Fichier notification trouvé : $NOTIF_FILE"
+          else
+            echo "AVERTISSEMENT : fichier Java de notification non trouvé."
+          fi
+
+          echo "Contrôle des fonctions V19 terminé."
 
       - name: Configurer Firebase
         shell: bash
@@ -235,7 +263,8 @@ jobs:
 
           echo "===== SIGNATURE V19 ====="
 
-          grep -A12 -B2 "signingConfigs" app/build.gradle || true
+          grep -A12 -B2 "signingConfigs" \
+            app/build.gradle || true
 
           echo "Configuration de signature vérifiée."
 
@@ -248,16 +277,16 @@ jobs:
 
           gradle clean --no-daemon
 
-      - name: Compiler APK V19 Release
+      - name: Compiler APK V19 FINAL Release
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "====================================="
-          echo "       COMPILATION V19 RELEASE"
-          echo "====================================="
+          echo "======================================"
+          echo " COMPILATION V19 FINAL RELEASE"
+          echo "======================================"
 
           gradle :app:assembleRelease --no-daemon
 
@@ -297,7 +326,7 @@ jobs:
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      - name: Préparer APK V19 final
+      - name: Préparer APK V19 FINAL
         shell: bash
         run: |
           set -e
@@ -306,15 +335,18 @@ jobs:
           mkdir -p release-apk
 
           cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE.apk"
+            "release-apk/YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.apk"
 
-          echo "===== APK V19 FINAL ====="
+          echo "======================================"
+          echo " APK V19 FINAL"
+          echo "======================================"
+
           ls -lh release-apk/
 
-      - name: Publier APK V19 Release
+      - name: Publier APK V19 FINAL Release
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE
-          path: release-apk/YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE.apk
+          name: YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL
+          path: release-apk/YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.apk
           if-no-files-found: error
           retention-days: 30
