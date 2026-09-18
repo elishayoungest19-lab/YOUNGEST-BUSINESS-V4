@@ -1,18 +1,18 @@
-name: Build Android APK V19 Nom Automatique Notifications
+name: Build Android APK V19 Synchronisation Firebase Corrigee
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build Android APK V19 Nom Automatique Notifications
+    name: Build Android APK V19 Synchronisation Firebase Corrigee
     runs-on: ubuntu-latest
 
     steps:
-      - name: Récupérer le dépôt
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
       - name: Installer Java 17
@@ -24,185 +24,115 @@ jobs:
       - name: Installer Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: ""
+          packages: ''
 
       - name: Installer les composants Android
         run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Installer Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q gradle-8.9-bin.zip
+          echo "$PWD/gradle-8.9/bin" >> "$GITHUB_PATH"
+          gradle --version
 
-      - name: Trouver le ZIP V19 FINAL
-        id: find_zip
+      - name: Trouver le ZIP V19 Synchronisation
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo " RECHERCHE DU ZIP V19 FINAL"
+          echo "RECHERCHE DU ZIP V19 SYNCHRONISATION"
           echo "======================================"
 
-          ZIP=$(find . -type f \
-            -name 'YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.zip' \
-            | head -n 1)
+          ZIP=$(find . -maxdepth 2 -type f \
+            -name 'YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE.zip' \
+            -print -quit)
 
           if [ -z "$ZIP" ]; then
-            echo "ZIP final exact non trouvé."
-            echo "Recherche d'un ZIP V19 final avec motif..."
-
-            ZIP=$(find . -type f \
-              -name 'YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS*.zip' \
-              | sort \
-              | tail -n 1)
+            ZIP=$(find . -maxdepth 2 -type f \
+              -name 'YOUNGEST-BUSINESS-V19-SYNCHRONISATION*.zip' \
+              -print -quit)
           fi
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : aucun ZIP V19 final trouvé."
-
+            echo "ERREUR : ZIP V19 synchronisation introuvable."
             echo "===== ZIP DISPONIBLES ====="
-            find . -type f -name '*.zip' | sort
-
+            find . -type f -name '*.zip' -print
             exit 1
           fi
 
-          echo "ZIP V19 FINAL trouvé : $ZIP"
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "ZIP trouve : $ZIP"
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
-      - name: Extraire le projet V19 FINAL
-        shell: bash
+      - name: Extraire le projet V19
         run: |
-          set -e
-
           rm -rf v19-extracted
           mkdir -p v19-extracted
+          unzip -q "$ZIP_PATH" -d v19-extracted
 
-          unzip -o "${{ steps.find_zip.outputs.zip }}" \
-            -d v19-extracted
-
-          echo "Projet V19 FINAL extrait."
-
-      - name: Détecter le projet Android V19
+      - name: Detecter le projet Android
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find v19-extracted \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print \
-            | head -n 1 \
-            | xargs -r dirname)
+          PROJECT=$(find v19-extracted -type f -name settings.gradle -o -name settings.gradle.kts | head -n 1)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERREUR : projet Android V19 introuvable."
+          if [ -z "$PROJECT" ]; then
+            echo "ERREUR : projet Android introuvable."
+            find v19-extracted -maxdepth 4 -type f | head -100
             exit 1
           fi
 
-          echo "Projet Android V19 : $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          ROOT=$(dirname "$PROJECT")
 
-      - name: Vérifier le projet V19 FINAL
-        shell: bash
+          echo "Projet Android : $ROOT"
+          echo "ANDROID_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Verifier le projet V19
         run: |
           set -e
+          cd "$ANDROID_ROOT"
 
-          cd "$PROJECT_DIR"
+          test -f settings.gradle || test -f settings.gradle.kts
+          test -f app/build.gradle || test -f app/build.gradle.kts
 
-          echo "======================================"
-          echo " VERIFICATION DU PROJET V19 FINAL"
-          echo "======================================"
-
-          if [ ! -f "app/build.gradle" ]; then
-            echo "ERREUR : app/build.gradle introuvable."
-            exit 1
-          fi
-
-          MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          if [ ! -f "$MAIN" ]; then
-            echo "ERREUR : MainActivity.java introuvable."
-            exit 1
-          fi
-
-          echo "===== APPLICATION ====="
-
-          grep -E "applicationId|versionCode|versionName" \
-            app/build.gradle || true
-
-          echo "===== ELEMENTS V19 ====="
-
-          grep -qi "YOUNGEST" "$MAIN"
-
-          echo "Projet Android V19 vérifié."
-
-      - name: Vérifier les fonctions Nom automatique et Notifications
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          echo "======================================"
-          echo " VERIFICATION FONCTIONS V19"
-          echo "======================================"
-
-          echo "Recherche identification portefeuille..."
-
-          grep -qi "M-Pesa" "$MAIN" || true
-          grep -qi "Airtel Money" "$MAIN" || true
-          grep -qi "Orange Money" "$MAIN" || true
-          grep -qi "Afrimoney" "$MAIN" || true
-
-          echo "Recherche fonctions de notification..."
-
-          NOTIF_FILE=$(find app/src/main/java \
-            -type f \
-            \( -iname '*Notification*.java' -o -iname '*Messaging*.java' \) \
-            | head -n 1)
-
-          if [ -n "$NOTIF_FILE" ]; then
-            echo "Fichier notification trouvé : $NOTIF_FILE"
-          else
-            echo "AVERTISSEMENT : fichier Java de notification non trouvé."
-          fi
-
-          echo "Contrôle des fonctions V19 terminé."
+          echo "Projet Android V19 valide."
 
       - name: Configurer Firebase
         shell: bash
         run: |
           set -e
+          cd "$ANDROID_ROOT"
 
-          cd "$PROJECT_DIR"
-
-          if [ -f "app/google-services.json" ]; then
-            echo "Firebase déjà configuré."
-
-          elif [ -f "google-services.json" ]; then
+          if [ -f google-services.json ]; then
+            mkdir -p app
             cp google-services.json app/google-services.json
-            echo "Firebase copié vers app/."
-
+            echo "google-services.json configure."
+          elif [ -f app/google-services.json ]; then
+            echo "google-services.json deja present."
           else
-            SOURCE=$(find "$GITHUB_WORKSPACE" \
-              -type f \
-              -name 'google-services.json' \
-              | head -n 1)
-
-            if [ -n "$SOURCE" ]; then
-              cp "$SOURCE" app/google-services.json
-              echo "Firebase configuré depuis : $SOURCE"
-            else
-              echo "AVERTISSEMENT : google-services.json introuvable."
-            fi
+            echo "ATTENTION : google-services.json introuvable."
           fi
 
-      - name: Préparer le keystore Release
+      - name: Verifier la synchronisation Firebase
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_ROOT"
+
+          echo "Verification des fichiers Firebase..."
+
+          grep -R "FirebaseFirestore" app/src/main/java >/dev/null || {
+            echo "ERREUR : FirebaseFirestore introuvable."
+            exit 1
+          }
+
+          echo "Firebase Firestore detecte."
+
+      - name: Preparer le keystore Release
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -210,143 +140,90 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
-
-          cd "$PROJECT_DIR"
-
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : KEYSTORE_BASE64 absent."
-            exit 1
-          fi
-
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "ERREUR : KEYSTORE_PASSWORD absent."
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "ERREUR : KEY_PASSWORD absent."
-            exit 1
-          fi
+          cd "$ANDROID_ROOT"
 
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
-          if [ ! -s release-keystore.jks ]; then
-            echo "ERREUR : keystore vide."
-            exit 1
-          fi
-
-          ALIAS=$(keytool \
-            -list \
+          ALIAS=$(keytool -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            -v 2>/dev/null \
-            | awk -F': ' '/Alias name:/ {print $2; exit}')
+            -v | awk -F': ' '/Alias name:/ {print $2; exit}')
 
           if [ -z "$ALIAS" ]; then
             echo "ERREUR : alias du keystore introuvable."
             exit 1
           fi
 
+          echo "Alias detecte : $ALIAS"
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
-          echo "Keystore Release préparé."
-          echo "Alias Release détecté."
-
-      - name: Vérifier la configuration de signature V19
+      - name: Verifier la configuration de signature
         shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
+          cd "$ANDROID_ROOT"
 
-          cd "$PROJECT_DIR"
+          test -f release-keystore.jks
 
-          echo "===== SIGNATURE V19 ====="
+          keytool -list \
+            -keystore release-keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" >/dev/null
 
-          grep -A12 -B2 "signingConfigs" \
-            app/build.gradle || true
-
-          echo "Configuration de signature vérifiée."
+          echo "Keystore Release valide."
 
       - name: Nettoyer le projet V19
-        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
+          cd "$ANDROID_ROOT"
           gradle clean --no-daemon
 
-      - name: Compiler APK V19 FINAL Release
-        shell: bash
+      - name: Compiler APK V19 Release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
         run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "======================================"
-          echo " COMPILATION V19 FINAL RELEASE"
-          echo "======================================"
-
+          cd "$ANDROID_ROOT"
           gradle :app:assembleRelease --no-daemon
 
-      - name: Vérifier APK V19 et sa signature
+      - name: Verifier APK
         shell: bash
         run: |
           set -e
+          cd "$ANDROID_ROOT"
 
-          APK=$(find \
-            "$PROJECT_DIR/app/build/outputs/apk/release" \
-            -type f \
-            -name '*.apk' \
-            | head -n 1)
+          APK=$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V19 introuvable."
+            echo "ERREUR : APK non trouve."
             exit 1
           fi
 
-          echo "APK V19 généré : $APK"
+          echo "APK trouve : $APK"
 
-          echo "===== VERIFICATION SIGNATURE APK ====="
+          apksigner verify --verbose "$APK"
 
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
-            --verbose \
-            "$APK"
-
-          echo "APK V19 Release signé et valide."
-
-          echo "===== EMPREINTE DU CERTIFICAT ====="
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
-            --print-certs \
-            "$APK"
-
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
-
-      - name: Préparer APK V19 FINAL
+      - name: Preparer APK final
         shell: bash
         run: |
           set -e
 
-          rm -rf release-apk
-          mkdir -p release-apk
+          APK=$(find "$ANDROID_ROOT/app/build/outputs/apk/release" \
+            -type f -name '*.apk' | head -n 1)
 
-          cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.apk"
+          mkdir -p final-apk
 
-          echo "======================================"
-          echo " APK V19 FINAL"
-          echo "======================================"
+          cp "$APK" \
+            "final-apk/YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE.apk"
 
-          ls -lh release-apk/
-
-      - name: Publier APK V19 FINAL Release
+      - name: Publier APK V19
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL
-          path: release-apk/YOUNGEST-BUSINESS-V19-NOM-AUTOMATIQUE-NOTIFICATIONS-FINAL.apk
+          name: YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE
+          path: final-apk/YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE.apk
           if-no-files-found: error
-          retention-days: 30
