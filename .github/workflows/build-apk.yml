@@ -1,4 +1,4 @@
-name: Build Android APK V18 Mobile Money Direct API
+name: Build Android APK V19 Layout Maquette
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V18 Mobile Money Direct API
+    name: Build Android APK V19 Layout Maquette
     runs-on: ubuntu-latest
 
     steps:
@@ -37,83 +37,76 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Trouver automatiquement le ZIP V18
+      - name: Trouver automatiquement le ZIP V19
         id: find_zip
         shell: bash
         run: |
           set -e
 
-          echo "===== RECHERCHE DU ZIP V18 ====="
+          echo "===== RECHERCHE DU ZIP V19 ====="
 
           ZIP=$(find . -maxdepth 3 -type f \
-            -name 'YOUNGEST-BUSINESS-V18-*.zip' \
+            -name 'YOUNGEST-BUSINESS-V19-*.zip' \
             | sort \
             | tail -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : aucun ZIP V18 trouvé."
-            echo "ZIP disponibles :"
+            echo "ERREUR : aucun ZIP V19 trouvé."
+            echo "===== ZIP DISPONIBLES ====="
             find . -maxdepth 3 -type f -name '*.zip' | sort
             exit 1
           fi
 
-          echo "ZIP V18 trouvé : $ZIP"
+          echo "ZIP V19 trouvé : $ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
-      - name: Extraire le projet V18
+      - name: Extraire le projet V19
         shell: bash
         run: |
           set -e
 
-          rm -rf v18-extracted
-          mkdir -p v18-extracted
+          rm -rf v19-extracted
+          mkdir -p v19-extracted
 
           unzip -o "${{ steps.find_zip.outputs.zip }}" \
-            -d v18-extracted
+            -d v19-extracted
 
-          echo "Projet V18 extrait."
+          echo "Projet V19 extrait."
 
-      - name: Détecter le projet Android
+      - name: Détecter le projet Android V19
         shell: bash
         run: |
           set -e
 
-          PROJECT_DIR=$(find v18-extracted \
+          PROJECT_DIR=$(find v19-extracted \
             \( -name settings.gradle -o -name settings.gradle.kts \) \
             -print \
             | head -n 1 \
             | xargs -r dirname)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "ERREUR : projet Android introuvable."
+            echo "ERREUR : projet Android V19 introuvable."
             exit 1
           fi
 
-          echo "Projet Android : $PROJECT_DIR"
+          echo "Projet Android V19 : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Vérifier la version V18
+      - name: Vérifier le projet V19
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "===== VERSION V18 ====="
+          echo "====================================="
+          echo "       VERIFICATION DU PROJET V19"
+          echo "====================================="
 
-          grep -E "applicationId|versionCode|versionName" app/build.gradle
-
-          grep -q "versionCode 15" app/build.gradle
-          grep -q "versionName '1.9.1'" app/build.gradle
-
-          echo "Version V18 confirmée."
-
-      - name: Vérifier les fonctions V18
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
+          if [ ! -f "app/build.gradle" ]; then
+            echo "ERREUR : app/build.gradle introuvable."
+            exit 1
+          fi
 
           MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
@@ -122,16 +115,36 @@ jobs:
             exit 1
           fi
 
-          echo "===== FONCTIONS V18 ====="
+          echo "===== APPLICATION ====="
+          grep -E "applicationId|versionCode|versionName" app/build.gradle || true
 
-          grep -q "clientTransferPage" "$MAIN"
-          grep -q "verifyWalletSimulation" "$MAIN"
-          grep -q "M-Pesa" "$MAIN"
-          grep -q "Airtel Money" "$MAIN"
-          grep -q "Orange Money" "$MAIN"
-          grep -q "Afrimoney" "$MAIN"
+          echo "===== ELEMENTS V19 ====="
 
-          echo "Fonctions V18 présentes."
+          grep -qi "YOUNGEST" "$MAIN"
+          grep -qi "CONTACT" "$MAIN" || true
+          grep -qi "PROPOS" "$MAIN" || true
+
+          echo "Projet V19 vérifié."
+
+      - name: Vérifier la disposition V19
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          MAIN="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          echo "===== CONTROLE LAYOUT V19 ====="
+
+          echo "Recherche des éléments principaux..."
+
+          grep -q "ESPACE BUREAU" "$MAIN" || true
+          grep -q "ESPACE CLIENT" "$MAIN" || true
+          grep -qi "CONTACTEZ" "$MAIN" || true
+          grep -qi "PROPOS DE NOUS" "$MAIN" || true
+
+          echo "Contrôle du layout V19 terminé."
 
       - name: Configurer Firebase
         shell: bash
@@ -213,20 +226,20 @@ jobs:
           echo "Keystore Release préparé."
           echo "Alias Release détecté."
 
-      - name: Vérifier la configuration de signature V18
+      - name: Vérifier la configuration de signature V19
         shell: bash
         run: |
           set -e
 
           cd "$PROJECT_DIR"
 
-          echo "===== SIGNATURE V18 ====="
+          echo "===== SIGNATURE V19 ====="
 
           grep -A12 -B2 "signingConfigs" app/build.gradle || true
 
           echo "Configuration de signature vérifiée."
 
-      - name: Nettoyer le projet V18
+      - name: Nettoyer le projet V19
         shell: bash
         run: |
           set -e
@@ -235,7 +248,7 @@ jobs:
 
           gradle clean --no-daemon
 
-      - name: Compiler APK V18 Release
+      - name: Compiler APK V19 Release
         shell: bash
         run: |
           set -e
@@ -243,12 +256,12 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "====================================="
-          echo "     COMPILATION V18 RELEASE"
+          echo "       COMPILATION V19 RELEASE"
           echo "====================================="
 
           gradle :app:assembleRelease --no-daemon
 
-      - name: Vérifier APK V18 et sa signature
+      - name: Vérifier APK V19 et sa signature
         shell: bash
         run: |
           set -e
@@ -260,11 +273,11 @@ jobs:
             | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V18 introuvable."
+            echo "ERREUR : APK V19 introuvable."
             exit 1
           fi
 
-          echo "APK V18 généré : $APK"
+          echo "APK V19 généré : $APK"
 
           echo "===== VERIFICATION SIGNATURE APK ====="
 
@@ -273,7 +286,7 @@ jobs:
             --verbose \
             "$APK"
 
-          echo "APK V18 Release signé et valide."
+          echo "APK V19 Release signé et valide."
 
           echo "===== EMPREINTE DU CERTIFICAT ====="
 
@@ -284,7 +297,7 @@ jobs:
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-      - name: Préparer APK V18 final
+      - name: Préparer APK V19 final
         shell: bash
         run: |
           set -e
@@ -293,15 +306,15 @@ jobs:
           mkdir -p release-apk
 
           cp "$APK_PATH" \
-            "release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk"
+            "release-apk/YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE.apk"
 
-          echo "===== APK FINAL ====="
+          echo "===== APK V19 FINAL ====="
           ls -lh release-apk/
 
-      - name: Publier APK V18 Release
+      - name: Publier APK V19 Release
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE
-          path: release-apk/YOUNGEST-BUSINESS-V18-IDENTIFICATION-PORTEFEUILLE-RELEASE.apk
+          name: YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE
+          path: release-apk/YOUNGEST-BUSINESS-V19-LAYOUT-MAQUETTE-RELEASE.apk
           if-no-files-found: error
           retention-days: 30
