@@ -31,6 +31,11 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
+      - name: Ajouter Android Build Tools au PATH
+        run: |
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+
       - name: Installer Gradle 8.9
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
@@ -211,7 +216,17 @@ jobs:
 
           echo "APK trouve : $APK"
 
-          apksigner verify --verbose "$APK"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "ERREUR : apksigner introuvable."
+            find "$ANDROID_HOME/build-tools" -name apksigner -type f -print
+            exit 1
+          fi
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+          echo "Signature APK valide."
 
       - name: Preparer APK final
         shell: bash
