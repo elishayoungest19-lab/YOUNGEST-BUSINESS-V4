@@ -1,4 +1,4 @@
-name: Build Android APK V19 Requests Sync Fix
+name: Build Android APK V20 Firebase Client Bureau Corrige
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V19 Requests Sync Fix
+    name: Build Android APK V20 Firebase Client Bureau Corrige
     runs-on: ubuntu-latest
 
     steps:
@@ -32,36 +32,33 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Ajouter Android Build Tools au PATH
-        run: |
-          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-
       - name: Installer Gradle 8.9
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip
-          echo "$PWD/gradle-8.9/bin" >> "$GITHUB_PATH"
-          gradle --version
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-      - name: Trouver UNIQUEMENT le ZIP V19 Requests Fix
+      # ==========================================================
+      # 🔥 V20 : SEUL ZIP AUTORISÉ
+      # ==========================================================
+
+      - name: Trouver UNIQUEMENT le ZIP V20 corrige
         shell: bash
         run: |
           set -e
 
-          EXPECTED="YOUNGEST-BUSINESS-V19-FIREBASE-ADMIN-UID-CORRIGE-v2.zip"
+          EXPECTED="YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE.zip"
 
           echo "=============================================="
-          echo "RECHERCHE DU ZIP V19 CORRIGE"
+          echo "RECHERCHE DU ZIP V20"
           echo "=============================================="
-          echo "Fichier obligatoire :"
+          echo "ZIP obligatoire :"
           echo "$EXPECTED"
 
           ZIP=$(find . -maxdepth 3 -type f -name "$EXPECTED" -print -quit)
 
           if [ -z "$ZIP" ]; then
             echo ""
-            echo "ERREUR : le ZIP V19 Requests Fix est introuvable."
+            echo "ERREUR : LE ZIP V20 OBLIGATOIRE EST INTROUVABLE."
             echo ""
             echo "ZIP disponibles dans le depot :"
             find . -type f -name "*.zip" -print
@@ -70,69 +67,64 @@ jobs:
 
           echo ""
           echo "=============================================="
-          echo "ZIP V19 CORRIGEE TROUVEE :"
+          echo "ZIP V20 TROUVE :"
           echo "$ZIP"
           echo "=============================================="
 
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
-      - name: Extraire le projet V19
+      # ==========================================================
+      # 🔥 EXTRACTION V20
+      # ==========================================================
+
+      - name: Extraire le projet V20
         shell: bash
         run: |
           set -e
 
-          rm -rf v19-extracted
-          mkdir -p v19-extracted
+          rm -rf v20-extracted
+          mkdir -p v20-extracted
 
-          echo "Extraction de :"
+          echo "Extraction du ZIP V20 :"
           echo "$ZIP_PATH"
 
-          unzip -q "$ZIP_PATH" -d v19-extracted
+          unzip -q "$ZIP_PATH" -d v20-extracted
 
-          echo "Extraction terminee."
+          echo "Extraction V20 terminee."
 
-      - name: Detecter le projet Android
+      # ==========================================================
+      # 🔥 DETECTION DU PROJET ANDROID
+      # ==========================================================
+
+      - name: Detecter le projet Android V20
         shell: bash
         run: |
           set -e
 
-          PROJECT=$(find v19-extracted -type f -name "settings.gradle" -print -quit)
+          PROJECT=$(find v20-extracted -type f -name "settings.gradle" -print -quit)
 
           if [ -z "$PROJECT" ]; then
-            PROJECT=$(find v19-extracted -type f -name "settings.gradle.kts" -print -quit)
+            PROJECT=$(find v20-extracted -type f -name "settings.gradle.kts" -print -quit)
           fi
 
           if [ -z "$PROJECT" ]; then
-            echo "ERREUR : projet Android introuvable."
-            find v19-extracted -maxdepth 5 -type f -print | head -200
+            echo "ERREUR : projet Android V20 introuvable."
+            find v20-extracted -maxdepth 6 -type f -print | head -300
             exit 1
           fi
 
           ROOT=$(dirname "$PROJECT")
 
-          echo "Projet Android detecte : $ROOT"
+          echo "Projet Android V20 detecte :"
+          echo "$ROOT"
+
           echo "ANDROID_ROOT=$ROOT" >> "$GITHUB_ENV"
 
-      - name: Verifier le projet V19
-        shell: bash
-        run: |
-          set -e
+      # ==========================================================
+      # 🔥 VERIFICATION IDENTITE V20
+      # ==========================================================
 
-          cd "$ANDROID_ROOT"
-
-          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
-            echo "ERREUR : settings.gradle introuvable."
-            exit 1
-          fi
-
-          if [ ! -f app/build.gradle ] && [ ! -f app/build.gradle.kts ]; then
-            echo "ERREUR : app/build.gradle introuvable."
-            exit 1
-          fi
-
-          echo "Projet Android V19 valide."
-
-      - name: Verifier le code Requests Fix
+      - name: Verifier identite V20
         shell: bash
         run: |
           set -e
@@ -140,77 +132,149 @@ jobs:
           cd "$ANDROID_ROOT"
 
           echo "=============================================="
-          echo "VERIFICATION DU CODE REQUESTS FIX"
+          echo "VERIFICATION IDENTITE V20"
           echo "=============================================="
 
-          if ! grep -R -q "yb_loan_requests" app/src/main/java; then
-            echo "ERREUR : yb_loan_requests introuvable."
-            exit 1
-          fi
+          grep -q "applicationId 'com.aistudio.youngestbiz.mbkz'" app/build.gradle
+          grep -q "versionCode 20" app/build.gradle
+          grep -q "versionName '1.14.0'" app/build.gradle
 
-          if ! grep -R -q "attachBureauRequestsListener" app/src/main/java; then
-            echo "ERREUR : attachBureauRequestsListener introuvable."
-            exit 1
-          fi
+          echo "Application ID V20 OK."
+          echo "versionCode 20 OK."
+          echo "versionName 1.14.0 OK."
 
-          if ! grep -R -q "attachClientRequestsListener" app/src/main/java; then
-            echo "ERREUR : attachClientRequestsListener introuvable."
-            exit 1
-          fi
+      # ==========================================================
+      # 🔥 VERIFICATION CLIENT → FIREBASE → BUREAU
+      # ==========================================================
 
-          echo "Code Requests Fix detecte."
-
-      - name: Configurer Firebase
+      - name: Verifier synchronisation Client Firebase Bureau V20
         shell: bash
         run: |
           set -e
 
           cd "$ANDROID_ROOT"
 
-          if [ -f google-services.json ]; then
+          JAVA="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          RULES="firestore.rules"
+
+          echo "=============================================="
+          echo "VERIFICATION CIRCUIT CLIENT FIREBASE BUREAU"
+          echo "=============================================="
+
+          if [ ! -f "$JAVA" ]; then
+            echo "ERREUR : MainActivity.java introuvable."
+            exit 1
+          fi
+
+          if [ ! -f "$RULES" ]; then
+            echo "ERREUR : firestore.rules introuvable."
+            exit 1
+          fi
+
+          grep -q 'yb_loan_requests' "$JAVA"
+
+          grep -q 'attachClientRequestsListener' "$JAVA"
+
+          grep -q 'attachBureauRequestsListener' "$JAVA"
+
+          grep -q 'q.clientId=clientUid' "$JAVA"
+
+          grep -q 'requesterUid' "$JAVA"
+
+          grep -q 'whereEqualTo("requesterUid", clientUid)' "$JAVA"
+
+          grep -q 'signInWithEmailAndPassword' "$JAVA"
+
+          grep -q 'addOnFailureListener' "$JAVA"
+
+          grep -q 'status' "$JAVA"
+
+          grep -q 'StxrZBDeUodj7YVPmXRA2AbWcUF2' "$RULES"
+
+          grep -q 'request.resource.data.requesterUid == request.auth.uid' "$RULES"
+
+          grep -q 'request.resource.data.clientId == request.auth.uid' "$RULES"
+
+          grep -q 'request.resource.data.status == "EN_ATTENTE"' "$RULES"
+
+          grep -q 'resource.data.requesterUid == request.auth.uid' "$RULES"
+
+          echo ""
+          echo "CLIENT UID : OK"
+          echo "REQUESTER UID : OK"
+          echo "STATUT EN_ATTENTE : OK"
+          echo "AUTHENTIFICATION BUREAU : OK"
+          echo "UID ADMIN FIREBASE : OK"
+          echo "LISTENER CLIENT : OK"
+          echo "LISTENER BUREAU : OK"
+          echo ""
+          echo "CIRCUIT V20 CLIENT → FIREBASE → BUREAU VERIFIE."
+
+      # ==========================================================
+      # 🔥 VERIFICATION FIREBASE
+      # ==========================================================
+
+      - name: Configurer Firebase V20
+        shell: bash
+        run: |
+          set -e
+
+          cd "$ANDROID_ROOT"
+
+          if [ -f app/google-services.json ]; then
+            echo "google-services.json deja present."
+
+          elif [ -f google-services.json ]; then
             mkdir -p app
             cp google-services.json app/google-services.json
-            echo "google-services.json configure."
-
-          elif [ -f app/google-services.json ]; then
-            echo "google-services.json deja present."
+            echo "google-services.json copie."
 
           else
             echo "ERREUR : google-services.json introuvable."
             exit 1
           fi
 
-      - name: Verifier Firebase Firestore
+      - name: Verifier Firebase Firestore V20
         shell: bash
         run: |
           set -e
 
           cd "$ANDROID_ROOT"
 
-          if ! grep -R -q "FirebaseFirestore" app/src/main/java; then
-            echo "ERREUR : FirebaseFirestore introuvable."
-            exit 1
-          fi
+          grep -R -q "FirebaseFirestore" app/src/main/java
 
-          echo "Firebase Firestore detecte."
+          echo "FirebaseFirestore detecte."
 
-      - name: Preparer le keystore Release
+      # ==========================================================
+      # 🔐 KEYSTORE RELEASE
+      # ==========================================================
+
+      - name: Preparer le keystore Release V20
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
 
           cd "$ANDROID_ROOT"
 
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+
           echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+
+          test -s release-keystore.jks
 
           ALIAS=$(keytool \
             -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            -v | awk -F': ' '/Alias name:/ {print $2; exit}')
+            -v 2>/dev/null \
+            | awk -F': ' '/Alias name:/ {print $2; exit}')
 
           if [ -z "$ALIAS" ]; then
             echo "ERREUR : alias du keystore introuvable."
@@ -218,35 +282,17 @@ jobs:
           fi
 
           echo "Alias detecte : $ALIAS"
+
           echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
-      - name: Verifier le keystore
+      # ==========================================================
+      # 🧹 CLEAN + BUILD V20
+      # ==========================================================
+
+      - name: Nettoyer le projet V20
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          set -e
-
-          cd "$ANDROID_ROOT"
-
-          if [ ! -f release-keystore.jks ]; then
-            echo "ERREUR : keystore introuvable."
-            exit 1
-          fi
-
-          keytool \
-            -list \
-            -keystore release-keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" >/dev/null
-
-          echo "Keystore Release valide."
-
-      - name: Nettoyer le projet V19
-        shell: bash
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
         run: |
           set -e
 
@@ -254,12 +300,8 @@ jobs:
 
           gradle clean --no-daemon
 
-      - name: Compiler APK V19 Release
+      - name: Compiler APK V20 Release
         shell: bash
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
         run: |
           set -e
 
@@ -267,42 +309,11 @@ jobs:
 
           gradle :app:assembleRelease --no-daemon
 
-      - name: Verifier APK
-        shell: bash
-        run: |
-          set -e
+      # ==========================================================
+      # 🔎 VERIFICATION APK V20
+      # ==========================================================
 
-          cd "$ANDROID_ROOT"
-
-          APK=$(find \
-            app/build/outputs/apk/release \
-            -type f \
-            -name "*.apk" \
-            -print -quit)
-
-          if [ -z "$APK" ]; then
-            echo "ERREUR : APK non trouve."
-            exit 1
-          fi
-
-          echo "APK trouve : $APK"
-
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-
-          if [ ! -x "$APKSIGNER" ]; then
-            echo "ERREUR : apksigner introuvable."
-            find "$ANDROID_HOME/build-tools" \
-              -name "apksigner" \
-              -type f \
-              -print
-            exit 1
-          fi
-
-          "$APKSIGNER" verify --verbose "$APK"
-
-          echo "Signature APK valide."
-
-      - name: Preparer APK final
+      - name: Verifier APK V20
         shell: bash
         run: |
           set -e
@@ -314,20 +325,60 @@ jobs:
             -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK Release introuvable."
+            echo "ERREUR : APK V20 introuvable."
             exit 1
           fi
 
+          echo "=============================================="
+          echo "APK V20 TROUVE :"
+          echo "$APK"
+          echo "=============================================="
+
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+          echo ""
+          echo "Signature APK V20 valide."
+
+          echo ""
+          echo "=============================================="
+          echo "VERIFICATION VERSION APK"
+          echo "=============================================="
+
+          "$AAPT" dump badging "$APK" | grep -E \
+            "package: name='com.aistudio.youngestbiz.mbkz' versionCode='20' versionName='1.14.0'"
+
+          echo ""
+          echo "VERSION APK 20 CONFIRMEE."
+
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      # ==========================================================
+      # 📦 PREPARER L'ARTIFACT V20
+      # ==========================================================
+
+      - name: Preparer Artifact V20
+        shell: bash
+        run: |
+          set -e
+
           mkdir -p final-apk
 
-          cp "$APK" \
-            "final-apk/YOUNGEST-BUSINESS-V19-REQUESTS-SYNC-FIX.apk"
+          cp "$APK_PATH" \
+            "final-apk/YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE.apk"
 
-          echo "APK final prepare."
+          ls -lh final-apk/
 
-      - name: Publier APK V19 Requests Fix
+      # ==========================================================
+      # 📦 PUBLIER UNIQUEMENT L'ARTIFACT V20
+      # ==========================================================
+
+      - name: Publier Artifact V20
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V19-REQUESTS-SYNC-FIX
-          path: final-apk/YOUNGEST-BUSINESS-V19-REQUESTS-SYNC-FIX.apk
+          name: YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE
+          path: final-apk/YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE.apk
           if-no-files-found: error
+          retention-days: 30
