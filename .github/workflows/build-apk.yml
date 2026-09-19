@@ -49,7 +49,7 @@ jobs:
         run: |
           set -e
 
-          EXPECTED="YOUNGEST-BUSINESS-V19-SYNCHRONISATION-FIREBASE-CORRIGEE-REQUESTS-FIX-2.zip"
+          EXPECTED="YOUNGEST-BUSINESS-V19-FIREBASE-ADMIN-UID-CORRIGE-v2.zip"
 
           echo "=============================================="
           echo "RECHERCHE DU ZIP V19 CORRIGE"
