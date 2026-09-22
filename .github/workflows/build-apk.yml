@@ -40,7 +40,10 @@ jobs:
       - name: Installer les composants Android
         shell: bash
         run: |
+          set -e
+
           yes | sdkmanager --licenses || true
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -72,6 +75,7 @@ jobs:
           echo "$ZIP_NAME"
 
           if [ ! -f "$ZIP_NAME" ]; then
+            echo ""
             echo "ERREUR : LE ZIP V21 OBLIGATOIRE EST INTROUVABLE."
             echo ""
             echo "ZIP PRESENTS DANS LE DEPOT :"
@@ -116,11 +120,14 @@ jobs:
 
           if [ -f "v21-extracted/settings.gradle" ]; then
             PROJECT_DIR="v21-extracted"
+
           elif [ -f "v21-extracted/settings.gradle.kts" ]; then
             PROJECT_DIR="v21-extracted"
+
           else
             FOUND=$(find v21-extracted \
-              -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+              -type f \
+              \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
               -print -quit)
 
             if [ -n "$FOUND" ]; then
@@ -151,31 +158,82 @@ jobs:
           echo "VERIFICATION IDENTITE V21"
           echo "=========================================="
 
-          echo "Recherche applicationId..."
-          grep -R "applicationId" app/build.gradle app/build.gradle.kts 2>/dev/null || true
+          GRADLE_FILE=""
+
+          if [ -f "app/build.gradle" ]; then
+            GRADLE_FILE="app/build.gradle"
+          elif [ -f "app/build.gradle.kts" ]; then
+            GRADLE_FILE="app/build.gradle.kts"
+          fi
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "ERREUR : fichier app/build.gradle ou app/build.gradle.kts introuvable."
+            exit 1
+          fi
+
+          echo "FICHIER GRADLE DETECTE : $GRADLE_FILE"
 
           echo ""
-          echo "Recherche versionCode..."
-          grep -R "versionCode" app/build.gradle app/build.gradle.kts 2>/dev/null || true
+          echo "=========================================="
+          echo "APPLICATION ID"
+          echo "=========================================="
+
+          grep -n "applicationId" "$GRADLE_FILE" || true
 
           echo ""
-          echo "Recherche versionName..."
-          grep -R "versionName" app/build.gradle app/build.gradle.kts 2>/dev/null || true
+          echo "=========================================="
+          echo "VERSION CODE"
+          echo "=========================================="
 
-          grep -R "com.aistudio.youngestbiz.mbkz" \
-            app/build.gradle \
-            app/build.gradle.kts
-
-          grep -R "versionCode[[:space:]]*21" \
-            app/build.gradle \
-            app/build.gradle.kts
-
-          grep -R "versionName[[:space:]]*[\"']1.15.0[\"']" \
-            app/build.gradle \
-            app/build.gradle.kts
+          grep -n "versionCode" "$GRADLE_FILE" || true
 
           echo ""
-          echo "IDENTITE V21 VALIDEE."
+          echo "=========================================="
+          echo "VERSION NAME"
+          echo "=========================================="
+
+          grep -n "versionName" "$GRADLE_FILE" || true
+
+          echo ""
+          echo "=========================================="
+          echo "VERIFICATION APPLICATION ID"
+          echo "=========================================="
+
+          if ! grep -q "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"; then
+            echo "ERREUR : applicationId V21 incorrect."
+            exit 1
+          fi
+
+          echo "Application ID V21 OK."
+
+          echo ""
+          echo "=========================================="
+          echo "VERIFICATION VERSION CODE"
+          echo "=========================================="
+
+          if ! grep -Eq "versionCode[[:space:]]+21" "$GRADLE_FILE"; then
+            echo "ERREUR : versionCode 21 introuvable."
+            exit 1
+          fi
+
+          echo "versionCode 21 OK."
+
+          echo ""
+          echo "=========================================="
+          echo "VERIFICATION VERSION NAME"
+          echo "=========================================="
+
+          if ! grep -Eq "versionName[[:space:]]+[\"']1\.15\.0[\"']" "$GRADLE_FILE"; then
+            echo "ERREUR : versionName 1.15.0 introuvable."
+            exit 1
+          fi
+
+          echo "versionName 1.15.0 OK."
+
+          echo ""
+          echo "=========================================="
+          echo "IDENTITE V21 VALIDEE"
+          echo "=========================================="
 
       # =========================================================
       # 10. VERIFIER SYNCHRONISATION CLIENT FIREBASE BUREAU
@@ -308,7 +366,10 @@ jobs:
           echo "VERIFICATION FIREBASE FIRESTORE"
           echo "=========================================="
 
-          grep -R "FirebaseFirestore" app/src/main 2>/dev/null
+          if ! grep -R "FirebaseFirestore" app/src/main 2>/dev/null; then
+            echo "ERREUR : FirebaseFirestore introuvable."
+            exit 1
+          fi
 
           echo ""
           echo "Firebase Firestore detecte."
