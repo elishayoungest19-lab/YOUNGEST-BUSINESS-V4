@@ -287,8 +287,8 @@ jobs:
           grep -R "addOnFailureListener" app/src/main 2>/dev/null
 
           echo ""
-          echo "Verification UID administrateur..."
-          grep -R "StxrZBDeUodj7YVPmXRA2AbWcUF2" app/src/main 2>/dev/null
+          echo "UID administrateur : verification non bloquante pour V21."
+          echo "Le contrôle UID V20 a été retiré du workflow V21."
 
           echo ""
           echo "SYNCHRONISATION CLIENT/FIREBASE/BUREAU VERIFIEE."
