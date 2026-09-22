@@ -162,12 +162,10 @@ jobs:
           echo "Recherche versionName..."
           grep -R "versionName" app/build.gradle app/build.gradle.kts 2>/dev/null || true
 
-          # Application ID obligatoire
           grep -R "com.aistudio.youngestbiz.mbkz" \
             app/build.gradle \
             app/build.gradle.kts
 
-          # Version V21 obligatoire
           grep -R "versionCode[[:space:]]*21" \
             app/build.gradle \
             app/build.gradle.kts
