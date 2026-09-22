@@ -50,7 +50,72 @@ jobs:
             "build-tools;35.0.0"
 
       # =========================================================
-      # 5. INSTALLER GRADLE 8.9
+      # 5. AJOUTER ANDROID BUILD TOOLS AU PATH
+      # =========================================================
+      - name: Ajouter Android Build Tools au PATH
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "CONFIGURATION ANDROID BUILD TOOLS"
+          echo "=========================================="
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+
+          if [ ! -d "$BUILD_TOOLS" ]; then
+            echo "ERREUR : Android Build Tools 35.0.0 introuvable."
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            exit 1
+          fi
+
+          if [ ! -f "$BUILD_TOOLS/apksigner" ]; then
+            echo "ERREUR : apksigner introuvable."
+            echo "Dossier : $BUILD_TOOLS"
+            ls -la "$BUILD_TOOLS"
+            exit 1
+          fi
+
+          if [ ! -f "$BUILD_TOOLS/aapt" ]; then
+            echo "ERREUR : aapt introuvable."
+            echo "Dossier : $BUILD_TOOLS"
+            ls -la "$BUILD_TOOLS"
+            exit 1
+          fi
+
+          echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
+
+          echo ""
+          echo "Android Build Tools ajoute au PATH."
+          echo "BUILD_TOOLS=$BUILD_TOOLS"
+
+      # =========================================================
+      # 6. VERIFIER APKSIGNER ET AAPT
+      # =========================================================
+      - name: Verifier outils Android
+        shell: bash
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "VERIFICATION OUTILS ANDROID"
+          echo "=========================================="
+
+          echo ""
+          echo "APKSIGNER :"
+          which apksigner
+          apksigner version || true
+
+          echo ""
+          echo "AAPT :"
+          which aapt
+          aapt version || true
+
+          echo ""
+          echo "OUTILS ANDROID DISPONIBLES."
+
+      # =========================================================
+      # 7. INSTALLER GRADLE 8.9
       # =========================================================
       - name: Installer Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -58,7 +123,7 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # 6. TROUVER LE ZIP V21 WONYA PAY
+      # 8. TROUVER LE ZIP V21 WONYA PAY
       # =========================================================
       - name: Trouver le ZIP V21 WonyaPay
         shell: bash
@@ -99,7 +164,7 @@ jobs:
           echo "ZIP_PATH=$ZIP_NAME" >> "$GITHUB_ENV"
 
       # =========================================================
-      # 7. EXTRAIRE LE PROJET V21
+      # 9. EXTRAIRE LE PROJET V21
       # =========================================================
       - name: Extraire le projet V21
         shell: bash
@@ -121,7 +186,7 @@ jobs:
           find v21-extracted -maxdepth 3 -type f | head -100
 
       # =========================================================
-      # 8. DETECTER LE PROJET ANDROID V21
+      # 10. DETECTER LE PROJET ANDROID V21
       # =========================================================
       - name: Detecter le projet Android V21
         shell: bash
@@ -163,7 +228,7 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       # =========================================================
-      # 9. VERIFIER IDENTITE V21
+      # 11. VERIFIER IDENTITE V21
       # =========================================================
       - name: Verifier identite V21
         shell: bash
@@ -204,9 +269,7 @@ jobs:
           grep -n "versionName" "$GRADLE_FILE" || true
 
           echo ""
-          echo "=========================================="
           echo "VERIFICATION APPLICATION ID"
-          echo "=========================================="
 
           if ! grep -q "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"; then
             echo "ERREUR : applicationId incorrect."
@@ -216,9 +279,7 @@ jobs:
           echo "Application ID V21 OK."
 
           echo ""
-          echo "=========================================="
           echo "VERIFICATION VERSION CODE"
-          echo "=========================================="
 
           if ! grep -Eq "versionCode[[:space:]]+21" "$GRADLE_FILE"; then
             echo "ERREUR : versionCode 21 introuvable."
@@ -228,9 +289,7 @@ jobs:
           echo "versionCode 21 OK."
 
           echo ""
-          echo "=========================================="
           echo "VERIFICATION VERSION NAME"
-          echo "=========================================="
 
           if ! grep -Eq "versionName[[:space:]]+[\"']1\.15\.0[\"']" "$GRADLE_FILE"; then
             echo "ERREUR : versionName 1.15.0 introuvable."
@@ -240,12 +299,10 @@ jobs:
           echo "versionName 1.15.0 OK."
 
           echo ""
-          echo "=========================================="
-          echo "IDENTITE V21 VALIDEE"
-          echo "=========================================="
+          echo "IDENTITE V21 VALIDEE."
 
       # =========================================================
-      # 10. VERIFIER SYNCHRONISATION CLIENT FIREBASE BUREAU
+      # 12. VERIFIER SYNCHRONISATION CLIENT FIREBASE BUREAU
       # =========================================================
       - name: Verifier synchronisation Client Firebase Bureau V21
         shell: bash
@@ -288,13 +345,12 @@ jobs:
 
           echo ""
           echo "UID administrateur : verification non bloquante pour V21."
-          echo "Le contrôle UID V20 a été retiré du workflow V21."
 
           echo ""
           echo "SYNCHRONISATION CLIENT/FIREBASE/BUREAU VERIFIEE."
 
       # =========================================================
-      # 11. VERIFIER MODULE TRANSFERT WONYA PAY V21
+      # 13. VERIFIER MODULE TRANSFERT WONYA PAY V21
       # =========================================================
       - name: Verifier module Transfert WonyaPay V21
         shell: bash
@@ -343,7 +399,7 @@ jobs:
           echo "MODULE TRANSFERT WONYA PAY V21 VERIFIE."
 
       # =========================================================
-      # 12. CONFIGURER FIREBASE
+      # 14. CONFIGURER FIREBASE
       # =========================================================
       - name: Configurer Firebase V21
         shell: bash
@@ -362,7 +418,7 @@ jobs:
           echo "google-services.json trouve."
 
       # =========================================================
-      # 13. VERIFIER FIREBASE FIRESTORE
+      # 15. VERIFIER FIREBASE FIRESTORE
       # =========================================================
       - name: Verifier Firebase Firestore V21
         shell: bash
@@ -384,7 +440,7 @@ jobs:
           echo "Firebase Firestore detecte."
 
       # =========================================================
-      # 14. PREPARER LE KEYSTORE RELEASE
+      # 16. PREPARER LE KEYSTORE RELEASE
       # =========================================================
       - name: Preparer le keystore Release V21
         shell: bash
@@ -437,7 +493,7 @@ jobs:
           echo "Alias du keystore detecte."
 
       # =========================================================
-      # 15. NETTOYER LE PROJET V21
+      # 17. NETTOYER LE PROJET V21
       # =========================================================
       - name: Nettoyer le projet V21
         shell: bash
@@ -461,7 +517,7 @@ jobs:
           echo "Nettoyage termine."
 
       # =========================================================
-      # 16. COMPILER APK V21 RELEASE
+      # 18. COMPILER APK V21 RELEASE
       # =========================================================
       - name: Compiler APK V21 Release
         shell: bash
@@ -495,7 +551,7 @@ jobs:
           echo "COMPILATION TERMINEE."
 
       # =========================================================
-      # 17. VERIFIER APK V21
+      # 19. VERIFIER APK V21
       # =========================================================
       - name: Verifier APK V21
         shell: bash
@@ -526,6 +582,9 @@ jobs:
           apksigner verify --verbose "$APK"
 
           echo ""
+          echo "SIGNATURE APK VALIDE."
+
+          echo ""
           echo "=========================================="
           echo "VERIFICATION INFORMATIONS APK"
           echo "=========================================="
@@ -553,12 +612,14 @@ jobs:
             "versionName='1.15.0'"
 
           echo ""
-          echo "APK V21 VALIDE."
+          echo "=========================================="
+          echo "APK V21 VALIDE"
+          echo "=========================================="
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
       # =========================================================
-      # 18. PREPARER ARTIFACT V21
+      # 20. PREPARER ARTIFACT V21
       # =========================================================
       - name: Preparer Artifact V21
         shell: bash
@@ -577,7 +638,7 @@ jobs:
           ls -lh release-v21/
 
       # =========================================================
-      # 19. PUBLIER ARTIFACT V21
+      # 21. PUBLIER ARTIFACT V21
       # =========================================================
       - name: Publier Artifact V21
         uses: actions/upload-artifact@v4
