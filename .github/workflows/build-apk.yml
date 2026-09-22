@@ -58,25 +58,27 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # 6. TROUVER UNIQUEMENT LE ZIP V21 WONYA PAY
+      # 6. TROUVER LE ZIP V21 WONYA PAY
       # =========================================================
-      - name: Trouver UNIQUEMENT le ZIP V21 WonyaPay
+      - name: Trouver le ZIP V21 WonyaPay
         shell: bash
         run: |
           set -e
 
           echo "=========================================="
-          echo "RECHERCHE DU ZIP V21"
+          echo "RECHERCHE DU ZIP V21 WONYA PAY"
           echo "=========================================="
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.zip"
+          ZIP_NAME=""
 
-          echo "ZIP OBLIGATOIRE :"
-          echo "$ZIP_NAME"
+          if [ -f "YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.zip" ]; then
+            ZIP_NAME="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.zip"
 
-          if [ ! -f "$ZIP_NAME" ]; then
-            echo ""
-            echo "ERREUR : LE ZIP V21 OBLIGATOIRE EST INTROUVABLE."
+          elif [ -f "YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT-3.zip" ]; then
+            ZIP_NAME="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT-3.zip"
+
+          else
+            echo "ERREUR : AUCUN ZIP V21 WONYA PAY TROUVE."
             echo ""
             echo "ZIP PRESENTS DANS LE DEPOT :"
             find . -maxdepth 1 -type f -name "*.zip" -print
@@ -84,8 +86,15 @@ jobs:
           fi
 
           echo ""
-          echo "ZIP V21 TROUVE AVEC SUCCES :"
+          echo "ZIP V21 SELECTIONNE :"
+          echo "$ZIP_NAME"
+
+          echo ""
+          echo "DETAILS DU ZIP :"
           ls -lh "$ZIP_NAME"
+
+          echo ""
+          echo "ZIP V21 TROUVE AVEC SUCCES."
 
           echo "ZIP_PATH=$ZIP_NAME" >> "$GITHUB_ENV"
 
@@ -97,14 +106,17 @@ jobs:
         run: |
           set -e
 
+          echo "=========================================="
+          echo "EXTRACTION DU PROJET V21"
+          echo "=========================================="
+
           rm -rf v21-extracted
           mkdir -p v21-extracted
 
           unzip -q "$ZIP_PATH" -d v21-extracted
 
-          echo "=========================================="
-          echo "CONTENU DU PROJET V21"
-          echo "=========================================="
+          echo ""
+          echo "CONTENU DU PROJET V21 :"
 
           find v21-extracted -maxdepth 3 -type f | head -100
 
@@ -115,6 +127,10 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "=========================================="
+          echo "DETECTION DU PROJET ANDROID V21"
+          echo "=========================================="
 
           PROJECT_DIR=""
 
@@ -140,7 +156,9 @@ jobs:
             exit 1
           fi
 
-          echo "PROJET ANDROID V21 : $PROJECT_DIR"
+          echo ""
+          echo "PROJET ANDROID V21 DETECTE :"
+          echo "$PROJECT_DIR"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
@@ -162,36 +180,27 @@ jobs:
 
           if [ -f "app/build.gradle" ]; then
             GRADLE_FILE="app/build.gradle"
+
           elif [ -f "app/build.gradle.kts" ]; then
             GRADLE_FILE="app/build.gradle.kts"
-          fi
 
-          if [ -z "$GRADLE_FILE" ]; then
-            echo "ERREUR : fichier app/build.gradle ou app/build.gradle.kts introuvable."
+          else
+            echo "ERREUR : app/build.gradle ou app/build.gradle.kts introuvable."
             exit 1
           fi
 
           echo "FICHIER GRADLE DETECTE : $GRADLE_FILE"
 
           echo ""
-          echo "=========================================="
-          echo "APPLICATION ID"
-          echo "=========================================="
-
+          echo "APPLICATION ID :"
           grep -n "applicationId" "$GRADLE_FILE" || true
 
           echo ""
-          echo "=========================================="
-          echo "VERSION CODE"
-          echo "=========================================="
-
+          echo "VERSION CODE :"
           grep -n "versionCode" "$GRADLE_FILE" || true
 
           echo ""
-          echo "=========================================="
-          echo "VERSION NAME"
-          echo "=========================================="
-
+          echo "VERSION NAME :"
           grep -n "versionName" "$GRADLE_FILE" || true
 
           echo ""
@@ -200,7 +209,7 @@ jobs:
           echo "=========================================="
 
           if ! grep -q "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"; then
-            echo "ERREUR : applicationId V21 incorrect."
+            echo "ERREUR : applicationId incorrect."
             exit 1
           fi
 
@@ -249,6 +258,7 @@ jobs:
           echo "VERIFICATION CLIENT -> FIREBASE -> BUREAU"
           echo "=========================================="
 
+          echo ""
           echo "Verification collection yb_loan_requests..."
           grep -R "yb_loan_requests" app/src/main 2>/dev/null
 
@@ -262,16 +272,11 @@ jobs:
 
           echo ""
           echo "Verification clientId..."
-          grep -R "q.clientId=clientUid" app/src/main 2>/dev/null || \
           grep -R "clientId" app/src/main 2>/dev/null
 
           echo ""
           echo "Verification requesterUid..."
           grep -R "requesterUid" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification whereEqualTo requesterUid..."
-          grep -R 'whereEqualTo("requesterUid", clientUid)' app/src/main 2>/dev/null || true
 
           echo ""
           echo "Verification connexion Firebase..."
@@ -345,6 +350,10 @@ jobs:
         run: |
           set -e
 
+          echo "=========================================="
+          echo "CONFIGURATION FIREBASE V21"
+          echo "=========================================="
+
           if [ ! -f "$PROJECT_DIR/app/google-services.json" ]; then
             echo "ERREUR : google-services.json absent."
             exit 1
@@ -386,6 +395,10 @@ jobs:
         run: |
           set -e
 
+          echo "=========================================="
+          echo "PREPARATION KEYSTORE RELEASE V21"
+          echo "=========================================="
+
           if [ -z "$KEYSTORE_BASE64" ]; then
             echo "ERREUR : KEYSTORE_BASE64 absent."
             exit 1
@@ -421,6 +434,8 @@ jobs:
 
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
 
+          echo "Alias du keystore detecte."
+
       # =========================================================
       # 15. NETTOYER LE PROJET V21
       # =========================================================
@@ -431,6 +446,10 @@ jobs:
 
           cd "$PROJECT_DIR"
 
+          echo "=========================================="
+          echo "NETTOYAGE DU PROJET V21"
+          echo "=========================================="
+
           chmod +x gradlew 2>/dev/null || true
 
           if [ -f "./gradlew" ]; then
@@ -438,6 +457,8 @@ jobs:
           else
             gradle clean
           fi
+
+          echo "Nettoyage termine."
 
       # =========================================================
       # 16. COMPILER APK V21 RELEASE
@@ -481,6 +502,10 @@ jobs:
         run: |
           set -e
 
+          echo "=========================================="
+          echo "VERIFICATION APK V21"
+          echo "=========================================="
+
           APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
             -type f \
             -name "*.apk" \
@@ -502,7 +527,7 @@ jobs:
 
           echo ""
           echo "=========================================="
-          echo "VERIFICATION VERSION APK"
+          echo "VERIFICATION INFORMATIONS APK"
           echo "=========================================="
 
           APK_INFO=$(aapt dump badging "$APK")
@@ -539,6 +564,10 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "=========================================="
+          echo "PREPARATION ARTIFACT V21"
+          echo "=========================================="
 
           mkdir -p release-v21
 
