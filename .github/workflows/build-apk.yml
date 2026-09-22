@@ -1,4 +1,4 @@
-name: Build Android APK V20 Firebase Client Bureau Corrige
+name: Build Android APK V21 WonyaPay Transfert
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V20 Firebase Client Bureau Corrige
+    name: Build Android APK V21 WonyaPay Transfert
     runs-on: ubuntu-latest
 
     steps:
@@ -56,18 +56,18 @@ jobs:
           gradle-version: '8.9'
 
       # ==========================================================
-      # 🔥 V20 : CHERCHER UNIQUEMENT LE BON ZIP
+      # 🔥 V21 : CHERCHER UNIQUEMENT LE BON ZIP
       # ==========================================================
 
-      - name: Trouver UNIQUEMENT le ZIP V20 corrige
+      - name: Trouver UNIQUEMENT le ZIP V21 WonyaPay
         shell: bash
         run: |
           set -e
 
-          EXPECTED="YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE-2.zip"
+          EXPECTED="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT-CORRIGE.zip"
 
           echo "=============================================="
-          echo "RECHERCHE DU ZIP V20"
+          echo "RECHERCHE DU ZIP V21"
           echo "=============================================="
 
           echo "ZIP OBLIGATOIRE :"
@@ -77,7 +77,7 @@ jobs:
 
           if [ -z "$ZIP" ]; then
             echo ""
-            echo "ERREUR : LE ZIP V20 OBLIGATOIRE EST INTROUVABLE."
+            echo "ERREUR : LE ZIP V21 OBLIGATOIRE EST INTROUVABLE."
             echo ""
             echo "ZIP PRESENTS DANS LE DEPOT :"
             find . -type f -name "*.zip" -print | sort
@@ -86,57 +86,57 @@ jobs:
 
           echo ""
           echo "=============================================="
-          echo "ZIP V20 TROUVE :"
+          echo "ZIP V21 TROUVE :"
           echo "$ZIP"
           echo "=============================================="
 
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
       # ==========================================================
-      # 📦 EXTRACTION V20
+      # 📦 EXTRACTION V21
       # ==========================================================
 
-      - name: Extraire le projet V20
+      - name: Extraire le projet V21
         shell: bash
         run: |
           set -e
 
-          rm -rf v20-extracted
-          mkdir -p v20-extracted
+          rm -rf v21-extracted
+          mkdir -p v21-extracted
 
-          echo "Extraction du ZIP V20 :"
+          echo "Extraction du ZIP V21 :"
           echo "$ZIP_PATH"
 
-          unzip -q "$ZIP_PATH" -d v20-extracted
+          unzip -q "$ZIP_PATH" -d v21-extracted
 
           echo ""
-          echo "Extraction V20 terminee."
+          echo "Extraction V21 terminee."
 
       # ==========================================================
       # 🔎 DETECTER LE PROJET ANDROID
       # ==========================================================
 
-      - name: Detecter le projet Android V20
+      - name: Detecter le projet Android V21
         shell: bash
         run: |
           set -e
 
-          PROJECT=$(find v20-extracted \
+          PROJECT=$(find v21-extracted \
             -type f \
             -name "settings.gradle" \
             -print -quit)
 
           if [ -z "$PROJECT" ]; then
-            PROJECT=$(find v20-extracted \
+            PROJECT=$(find v21-extracted \
               -type f \
               -name "settings.gradle.kts" \
               -print -quit)
           fi
 
           if [ -z "$PROJECT" ]; then
-            echo "ERREUR : PROJET ANDROID V20 INTROUVABLE."
+            echo "ERREUR : PROJET ANDROID V21 INTROUVABLE."
 
-            find v20-extracted \
+            find v21-extracted \
               -maxdepth 6 \
               -type f \
               -print | head -300
@@ -148,17 +148,17 @@ jobs:
 
           echo ""
           echo "=============================================="
-          echo "PROJET ANDROID V20 DETECTE :"
+          echo "PROJET ANDROID V21 DETECTE :"
           echo "$ROOT"
           echo "=============================================="
 
           echo "ANDROID_ROOT=$ROOT" >> "$GITHUB_ENV"
 
       # ==========================================================
-      # 🔐 VERIFIER IDENTITE V20
+      # 🔐 VERIFIER IDENTITE V21
       # ==========================================================
 
-      - name: Verifier identite V20
+      - name: Verifier identite V21
         shell: bash
         run: |
           set -e
@@ -166,7 +166,7 @@ jobs:
           cd "$ANDROID_ROOT"
 
           echo "=============================================="
-          echo "VERIFICATION IDENTITE V20"
+          echo "VERIFICATION IDENTITE V21"
           echo "=============================================="
 
           if [ ! -f app/build.gradle ]; then
@@ -177,22 +177,22 @@ jobs:
           grep -q "applicationId 'com.aistudio.youngestbiz.mbkz'" \
             app/build.gradle
 
-          grep -q "versionCode 20" \
+          grep -q "versionCode 21" \
             app/build.gradle
 
-          grep -q "versionName '1.14.0'" \
+          grep -q "versionName '1.15.0'" \
             app/build.gradle
 
           echo ""
-          echo "Application ID V20 : OK"
-          echo "versionCode 20 : OK"
-          echo "versionName 1.14.0 : OK"
+          echo "Application ID V21 : OK"
+          echo "versionCode 21 : OK"
+          echo "versionName 1.15.0 : OK"
 
       # ==========================================================
-      # 🔥 VERIFIER CLIENT → FIREBASE → BUREAU
+      # 🔥 VERIFIER SYNCHRONISATION CLIENT → FIREBASE → BUREAU
       # ==========================================================
 
-      - name: Verifier synchronisation Client Firebase Bureau V20
+      - name: Verifier synchronisation Client Firebase Bureau V21
         shell: bash
         run: |
           set -e
@@ -272,14 +272,72 @@ jobs:
           echo "UID ADMIN FIREBASE : OK"
           echo ""
           echo "=============================================="
-          echo "CIRCUIT V20 CLIENT → FIREBASE → BUREAU VERIFIE"
+          echo "CIRCUIT V21 CLIENT → FIREBASE → BUREAU VERIFIE"
+          echo "=============================================="
+
+      # ==========================================================
+      # 💸 VERIFIER MODULE TRANSFERT WONYAPAY
+      # ==========================================================
+
+      - name: Verifier module Transfert WonyaPay V21
+        shell: bash
+        run: |
+          set -e
+
+          cd "$ANDROID_ROOT"
+
+          JAVA="app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          echo "=============================================="
+          echo "VERIFICATION TRANSFERT WONYAPAY V21"
+          echo "=============================================="
+
+          if [ ! -f "$JAVA" ]; then
+            echo "ERREUR : MainActivity.java introuvable."
+            exit 1
+          fi
+
+          # Verification des elements fondamentaux du transfert
+          grep -q "B2C" "$JAVA"
+
+          grep -q "MobileMoney" "$JAVA" || \
+          grep -q "mobileMoney" "$JAVA"
+
+          grep -q "CDF" "$JAVA"
+
+          grep -q "USD" "$JAVA"
+
+          grep -q "M-Pesa" "$JAVA" || \
+          grep -q "M-PESA" "$JAVA" || \
+          grep -q "Vodacom" "$JAVA"
+
+          grep -q "Airtel" "$JAVA"
+
+          grep -q "Orange" "$JAVA"
+
+          grep -q "Afrimoney" "$JAVA" || \
+          grep -q "Africell" "$JAVA"
+
+          echo ""
+          echo "B2C : OK"
+          echo "MobileMoney : OK"
+          echo "CDF : OK"
+          echo "USD : OK"
+          echo "M-Pesa / Vodacom : OK"
+          echo "Airtel Money : OK"
+          echo "Orange Money : OK"
+          echo "Afrimoney / Africell : OK"
+
+          echo ""
+          echo "=============================================="
+          echo "MODULE TRANSFERT WONYAPAY V21 VERIFIE"
           echo "=============================================="
 
       # ==========================================================
       # 🔥 FIREBASE
       # ==========================================================
 
-      - name: Configurer Firebase V20
+      - name: Configurer Firebase V21
         shell: bash
         run: |
           set -e
@@ -305,7 +363,7 @@ jobs:
 
           fi
 
-      - name: Verifier Firebase Firestore V20
+      - name: Verifier Firebase Firestore V21
         shell: bash
         run: |
           set -e
@@ -321,7 +379,7 @@ jobs:
       # 🔐 KEYSTORE RELEASE
       # ==========================================================
 
-      - name: Preparer le keystore Release V20
+      - name: Preparer le keystore Release V21
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -364,7 +422,7 @@ jobs:
       # 🧹 CLEAN
       # ==========================================================
 
-      - name: Nettoyer le projet V20
+      - name: Nettoyer le projet V21
         shell: bash
         run: |
           set -e
@@ -374,10 +432,10 @@ jobs:
           gradle clean --no-daemon
 
       # ==========================================================
-      # 🏗️ COMPILATION V20
+      # 🏗️ COMPILATION V21
       # ==========================================================
 
-      - name: Compiler APK V20 Release
+      - name: Compiler APK V21 Release
         shell: bash
         run: |
           set -e
@@ -387,10 +445,10 @@ jobs:
           gradle :app:assembleRelease --no-daemon
 
       # ==========================================================
-      # 🔎 VERIFIER APK V20
+      # 🔎 VERIFIER APK V21
       # ==========================================================
 
-      - name: Verifier APK V20
+      - name: Verifier APK V21
         shell: bash
         run: |
           set -e
@@ -402,13 +460,13 @@ jobs:
             -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V20 introuvable."
+            echo "ERREUR : APK V21 introuvable."
             exit 1
           fi
 
           echo ""
           echo "=============================================="
-          echo "APK V20 TROUVE :"
+          echo "APK V21 TROUVE :"
           echo "$APK"
           echo "=============================================="
 
@@ -423,27 +481,27 @@ jobs:
           "$APKSIGNER" verify --verbose "$APK"
 
           echo ""
-          echo "Signature APK V20 : VALIDE"
+          echo "Signature APK V21 : VALIDE"
 
           echo ""
           echo "=============================================="
-          echo "VERIFICATION VERSION APK"
+          echo "VERIFICATION VERSION APK V21"
           echo "=============================================="
 
           "$AAPT" dump badging "$APK" | \
             grep -E \
-            "package: name='com.aistudio.youngestbiz.mbkz' versionCode='20' versionName='1.14.0'"
+            "package: name='com.aistudio.youngestbiz.mbkz' versionCode='21' versionName='1.15.0'"
 
           echo ""
-          echo "VERSION APK V20 : CONFIRMEE"
+          echo "VERSION APK V21 : CONFIRMEE"
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
       # ==========================================================
-      # 📦 PREPARER ARTIFACT V20
+      # 📦 PREPARER ARTIFACT V21
       # ==========================================================
 
-      - name: Preparer Artifact V20
+      - name: Preparer Artifact V21
         shell: bash
         run: |
           set -e
@@ -451,27 +509,27 @@ jobs:
           mkdir -p final-apk
 
           cp "$APK_PATH" \
-            "final-apk/YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE.apk"
+            "final-apk/YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.apk"
 
           echo ""
           echo "=============================================="
-          echo "ARTIFACT V20 PREPARE :"
+          echo "ARTIFACT V21 PREPARE :"
           echo "=============================================="
 
           ls -lh final-apk/
 
       # ==========================================================
-      # 📦 PUBLIER UNIQUEMENT ARTIFACT V20
+      # 📦 PUBLIER UNIQUEMENT ARTIFACT V21
       # ==========================================================
 
-      - name: Publier Artifact V20
+      - name: Publier Artifact V21
         uses: actions/upload-artifact@v4
 
         with:
-          name: YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE
+          name: YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT
 
           path: |
-            final-apk/YOUNGEST-BUSINESS-V20-FIREBASE-CLIENT-BUREAU-CORRIGE.apk
+            final-apk/YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.apk
 
           if-no-files-found: error
 
