@@ -1,4 +1,5 @@
-name: Build Android APK V21 WonyaPay Transfert
+
+name: Build Android APK V22 Rapports Mensuels
 
 on:
   push:
@@ -8,441 +9,131 @@ on:
 
 jobs:
   build:
-    name: Build Android APK V21 WonyaPay Transfert
+    name: Build Android APK V22
     runs-on: ubuntu-latest
 
     steps:
-
-      # =========================================================
-      # 1. RECUPERER LE DEPOT
-      # =========================================================
+      # 1. Recuperer le depot
       - name: Recuperer le depot
         uses: actions/checkout@v4
 
-      # =========================================================
-      # 2. INSTALLER JAVA 17
-      # =========================================================
+      # 2. Installer Java 17
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # =========================================================
-      # 3. INSTALLER ANDROID SDK
-      # =========================================================
+      # 3. Installer Android SDK
       - name: Installer Android SDK
         uses: android-actions/setup-android@v4
 
-      # =========================================================
-      # 4. INSTALLER LES COMPOSANTS ANDROID
-      # =========================================================
       - name: Installer les composants Android
         shell: bash
         run: |
           set -e
-
           yes | sdkmanager --licenses || true
-
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # =========================================================
-      # 5. AJOUTER ANDROID BUILD TOOLS AU PATH
-      # =========================================================
-      - name: Ajouter Android Build Tools au PATH
+      # 4. Ajouter les outils Android au PATH
+      - name: Configurer Android Build Tools
         shell: bash
         run: |
           set -e
-
-          echo "=========================================="
-          echo "CONFIGURATION ANDROID BUILD TOOLS"
-          echo "=========================================="
-
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-
-          if [ ! -d "$BUILD_TOOLS" ]; then
-            echo "ERREUR : Android Build Tools 35.0.0 introuvable."
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            exit 1
-          fi
-
-          if [ ! -f "$BUILD_TOOLS/apksigner" ]; then
-            echo "ERREUR : apksigner introuvable."
-            echo "Dossier : $BUILD_TOOLS"
-            ls -la "$BUILD_TOOLS"
-            exit 1
-          fi
-
-          if [ ! -f "$BUILD_TOOLS/aapt" ]; then
-            echo "ERREUR : aapt introuvable."
-            echo "Dossier : $BUILD_TOOLS"
-            ls -la "$BUILD_TOOLS"
-            exit 1
-          fi
-
+          test -f "$BUILD_TOOLS/apksigner"
+          test -f "$BUILD_TOOLS/aapt"
           echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
 
-          echo ""
-          echo "Android Build Tools ajoute au PATH."
-          echo "BUILD_TOOLS=$BUILD_TOOLS"
-
-      # =========================================================
-      # 6. VERIFIER APKSIGNER ET AAPT
-      # =========================================================
-      - name: Verifier outils Android
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "VERIFICATION OUTILS ANDROID"
-          echo "=========================================="
-
-          echo ""
-          echo "APKSIGNER :"
-          which apksigner
-          apksigner version || true
-
-          echo ""
-          echo "AAPT :"
-          which aapt
-          aapt version || true
-
-          echo ""
-          echo "OUTILS ANDROID DISPONIBLES."
-
-      # =========================================================
-      # 7. INSTALLER GRADLE 8.9
-      # =========================================================
+      # 5. Installer Gradle
       - name: Installer Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # =========================================================
-      # 8. TROUVER LE ZIP V21 WONYA PAY
-      # =========================================================
-      - name: Trouver le ZIP V21 WonyaPay
+      # 6. Trouver le ZIP V22
+      - name: Trouver le ZIP V22 Rapports Mensuels
         shell: bash
         run: |
           set -e
+          ZIP_NAME="YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.zip"
 
-          echo "=========================================="
-          echo "RECHERCHE DU ZIP V21 WONYA PAY"
-          echo "=========================================="
-
-          ZIP_NAME=""
-
-          if [ -f "YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.zip" ]; then
-            ZIP_NAME="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.zip"
-
-          elif [ -f "YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT-3.zip" ]; then
-            ZIP_NAME="YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT-3.zip"
-
-          else
-            echo "ERREUR : AUCUN ZIP V21 WONYA PAY TROUVE."
-            echo ""
-            echo "ZIP PRESENTS DANS LE DEPOT :"
-            find . -maxdepth 1 -type f -name "*.zip" -print
+          if [ ! -f "$ZIP_NAME" ]; then
+            echo "ERREUR : ZIP V22 introuvable a la racine du depot."
+            find . -maxdepth 3 -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo ""
-          echo "ZIP V21 SELECTIONNE :"
-          echo "$ZIP_NAME"
-
-          echo ""
-          echo "DETAILS DU ZIP :"
+          echo "ZIP V22 selectionne : $ZIP_NAME"
           ls -lh "$ZIP_NAME"
-
-          echo ""
-          echo "ZIP V21 TROUVE AVEC SUCCES."
-
           echo "ZIP_PATH=$ZIP_NAME" >> "$GITHUB_ENV"
 
-      # =========================================================
-      # 9. EXTRAIRE LE PROJET V21
-      # =========================================================
-      - name: Extraire le projet V21
+      # 7. Extraire le projet V22
+      - name: Extraire le projet V22
+        shell: bash
+        run: |
+          set -e
+          rm -rf v22-extracted
+          mkdir -p v22-extracted
+          unzip -q "$ZIP_PATH" -d v22-extracted
+
+          echo "Contenu extrait :"
+          find v22-extracted -maxdepth 3 -type f | head -100
+
+      # 8. Detecter le projet Android
+      - name: Detecter le projet Android V22
         shell: bash
         run: |
           set -e
 
-          echo "=========================================="
-          echo "EXTRACTION DU PROJET V21"
-          echo "=========================================="
+          SETTINGS_FILE=$(find v22-extracted \
+            -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)
 
-          rm -rf v21-extracted
-          mkdir -p v21-extracted
-
-          unzip -q "$ZIP_PATH" -d v21-extracted
-
-          echo ""
-          echo "CONTENU DU PROJET V21 :"
-
-          find v21-extracted -maxdepth 3 -type f | head -100
-
-      # =========================================================
-      # 10. DETECTER LE PROJET ANDROID V21
-      # =========================================================
-      - name: Detecter le projet Android V21
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "DETECTION DU PROJET ANDROID V21"
-          echo "=========================================="
-
-          PROJECT_DIR=""
-
-          if [ -f "v21-extracted/settings.gradle" ]; then
-            PROJECT_DIR="v21-extracted"
-
-          elif [ -f "v21-extracted/settings.gradle.kts" ]; then
-            PROJECT_DIR="v21-extracted"
-
-          else
-            FOUND=$(find v21-extracted \
-              -type f \
-              \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-              -print -quit)
-
-            if [ -n "$FOUND" ]; then
-              PROJECT_DIR="$(dirname "$FOUND")"
-            fi
-          fi
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERREUR : PROJET ANDROID V21 INTROUVABLE."
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERREUR : projet Gradle Android introuvable dans le ZIP V22."
             exit 1
           fi
 
-          echo ""
-          echo "PROJET ANDROID V21 DETECTE :"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      # =========================================================
-      # 11. VERIFIER IDENTITE V21
-      # =========================================================
-      - name: Verifier identite V21
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "=========================================="
-          echo "VERIFICATION IDENTITE V21"
-          echo "=========================================="
-
-          GRADLE_FILE=""
-
-          if [ -f "app/build.gradle" ]; then
-            GRADLE_FILE="app/build.gradle"
-
-          elif [ -f "app/build.gradle.kts" ]; then
-            GRADLE_FILE="app/build.gradle.kts"
-
-          else
-            echo "ERREUR : app/build.gradle ou app/build.gradle.kts introuvable."
-            exit 1
-          fi
-
-          echo "FICHIER GRADLE DETECTE : $GRADLE_FILE"
-
-          echo ""
-          echo "APPLICATION ID :"
-          grep -n "applicationId" "$GRADLE_FILE" || true
-
-          echo ""
-          echo "VERSION CODE :"
-          grep -n "versionCode" "$GRADLE_FILE" || true
-
-          echo ""
-          echo "VERSION NAME :"
-          grep -n "versionName" "$GRADLE_FILE" || true
-
-          echo ""
-          echo "VERIFICATION APPLICATION ID"
-
-          if ! grep -q "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"; then
-            echo "ERREUR : applicationId incorrect."
-            exit 1
-          fi
-
-          echo "Application ID V21 OK."
-
-          echo ""
-          echo "VERIFICATION VERSION CODE"
-
-          if ! grep -Eq "versionCode[[:space:]]+21" "$GRADLE_FILE"; then
-            echo "ERREUR : versionCode 21 introuvable."
-            exit 1
-          fi
-
-          echo "versionCode 21 OK."
-
-          echo ""
-          echo "VERIFICATION VERSION NAME"
-
-          if ! grep -Eq "versionName[[:space:]]+[\"']1\.15\.0[\"']" "$GRADLE_FILE"; then
-            echo "ERREUR : versionName 1.15.0 introuvable."
-            exit 1
-          fi
-
-          echo "versionName 1.15.0 OK."
-
-          echo ""
-          echo "IDENTITE V21 VALIDEE."
-
-      # =========================================================
-      # 12. VERIFIER SYNCHRONISATION CLIENT FIREBASE BUREAU
-      # =========================================================
-      - name: Verifier synchronisation Client Firebase Bureau V21
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "=========================================="
-          echo "VERIFICATION CLIENT -> FIREBASE -> BUREAU"
-          echo "=========================================="
-
-          echo ""
-          echo "Verification collection yb_loan_requests..."
-          grep -R "yb_loan_requests" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification attachClientRequestsListener..."
-          grep -R "attachClientRequestsListener" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification attachBureauRequestsListener..."
-          grep -R "attachBureauRequestsListener" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification clientId..."
-          grep -R "clientId" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification requesterUid..."
-          grep -R "requesterUid" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification connexion Firebase..."
-          grep -R "signInWithEmailAndPassword" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Verification gestion erreur Firebase..."
-          grep -R "addOnFailureListener" app/src/main 2>/dev/null
-
-          echo ""
-          echo "UID administrateur : verification non bloquante pour V21."
-
-          echo ""
-          echo "SYNCHRONISATION CLIENT/FIREBASE/BUREAU VERIFIEE."
-
-      # =========================================================
-      # 13. VERIFIER MODULE TRANSFERT WONYA PAY V21
-      # =========================================================
-      - name: Verifier module Transfert WonyaPay V21
-        shell: bash
-        run: |
-          set -e
-
-          cd "$PROJECT_DIR"
-
-          echo "=========================================="
-          echo "VERIFICATION MODULE TRANSFERT WONYA PAY"
-          echo "=========================================="
-
-          echo ""
-          echo "Recherche B2C..."
-          grep -R "B2C" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche MobileMoney..."
-          grep -R -i "MobileMoney" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche CDF..."
-          grep -R "CDF" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche USD..."
-          grep -R "USD" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche M-Pesa / Vodacom..."
-          grep -R -E "M-Pesa|M-PESA|Vodacom" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche Airtel..."
-          grep -R "Airtel" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche Orange..."
-          grep -R "Orange" app/src/main 2>/dev/null
-
-          echo ""
-          echo "Recherche Afrimoney / Africell..."
-          grep -R -E "Afrimoney|Africell" app/src/main 2>/dev/null
-
-          echo ""
-          echo "MODULE TRANSFERT WONYA PAY V21 VERIFIE."
-
-      # =========================================================
-      # 14. CONFIGURER FIREBASE
-      # =========================================================
-      - name: Configurer Firebase V21
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "CONFIGURATION FIREBASE V21"
-          echo "=========================================="
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
 
           if [ ! -f "$PROJECT_DIR/app/google-services.json" ]; then
-            echo "ERREUR : google-services.json absent."
+            echo "ERREUR : app/google-services.json introuvable."
             exit 1
           fi
 
-          echo "google-services.json trouve."
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
+             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERREUR : configuration Gradle du module app introuvable."
+            exit 1
+          fi
 
-      # =========================================================
-      # 15. VERIFIER FIREBASE FIRESTORE
-      # =========================================================
-      - name: Verifier Firebase Firestore V21
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android V22 detecte : $PROJECT_DIR"
+
+      # 9. Verifier le contenu du projet
+      - name: Verifier le projet V22
         shell: bash
         run: |
           set -e
-
           cd "$PROJECT_DIR"
 
-          echo "=========================================="
-          echo "VERIFICATION FIREBASE FIRESTORE"
-          echo "=========================================="
+          echo "Configuration de l'application :"
+          grep -nE "applicationId|versionCode|versionName" \
+            app/build.gradle app/build.gradle.kts 2>/dev/null || true
 
-          if ! grep -R "FirebaseFirestore" app/src/main 2>/dev/null; then
-            echo "ERREUR : FirebaseFirestore introuvable."
-            exit 1
-          fi
+          echo "Recherche des fonctionnalites de rapports :"
+          grep -RniE "rapport|report|echeance|échéance" \
+            app/src/main 2>/dev/null | head -80 || true
 
-          echo ""
-          echo "Firebase Firestore detecte."
+          echo "Verification du projet terminee."
 
-      # =========================================================
-      # 16. PREPARER LE KEYSTORE RELEASE
-      # =========================================================
-      - name: Preparer le keystore Release V21
+      # 10. Preparer le keystore de signature
+      - name: Preparer le keystore Release
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -451,87 +142,65 @@ jobs:
         run: |
           set -e
 
-          echo "=========================================="
-          echo "PREPARATION KEYSTORE RELEASE V21"
-          echo "=========================================="
-
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "ERREUR : KEYSTORE_BASE64 absent."
+          test -n "$KEYSTORE_BASE64" || {
+            echo "ERREUR : secret KEYSTORE_BASE64 absent."
             exit 1
-          fi
+          }
 
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "ERREUR : KEYSTORE_PASSWORD absent."
+          test -n "$KEYSTORE_PASSWORD" || {
+            echo "ERREUR : secret KEYSTORE_PASSWORD absent."
             exit 1
-          fi
+          }
 
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "ERREUR : KEY_PASSWORD absent."
+          test -n "$KEY_PASSWORD" || {
+            echo "ERREUR : secret KEY_PASSWORD absent."
             exit 1
-          fi
+          }
 
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_DIR/release-keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode \
+            > "$PROJECT_DIR/release-keystore.jks"
 
-          echo "Keystore Release V21 prepare."
-
-          KEY_ALIAS=$(keytool -list \
-            -v \
+          keytool -list \
             -keystore "$PROJECT_DIR/release-keystore.jks" \
-            -storepass "$KEYSTORE_PASSWORD" \
-            2>/dev/null \
-            | grep "Alias name:" \
-            | head -1 \
+            -storepass "$KEYSTORE_PASSWORD" >/dev/null
+
+          KEY_ALIAS=$(keytool -list -v \
+            -keystore "$PROJECT_DIR/release-keystore.jks" \
+            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | grep "Alias name:" | head -1 \
             | sed 's/.*Alias name: //')
 
-          if [ -z "$KEY_ALIAS" ]; then
+          test -n "$KEY_ALIAS" || {
             echo "ERREUR : alias du keystore introuvable."
             exit 1
-          fi
+          }
 
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "Keystore configure."
 
-          echo "Alias du keystore detecte."
-
-      # =========================================================
-      # 17. NETTOYER LE PROJET V21
-      # =========================================================
-      - name: Nettoyer le projet V21
+      # 11. Nettoyer le projet
+      - name: Nettoyer le projet V22
         shell: bash
         run: |
           set -e
-
           cd "$PROJECT_DIR"
 
-          echo "=========================================="
-          echo "NETTOYAGE DU PROJET V21"
-          echo "=========================================="
-
-          chmod +x gradlew 2>/dev/null || true
-
           if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
             ./gradlew clean
           else
             gradle clean
           fi
 
-          echo "Nettoyage termine."
-
-      # =========================================================
-      # 18. COMPILER APK V21 RELEASE
-      # =========================================================
-      - name: Compiler APK V21 Release
+      # 12. Compiler l'APK V22
+      - name: Compiler APK V22 Release
         shell: bash
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
-
           cd "$PROJECT_DIR"
-
-          echo "=========================================="
-          echo "COMPILATION APK V21 RELEASE"
-          echo "=========================================="
 
           if [ -f "./gradlew" ]; then
             ./gradlew :app:assembleRelease \
@@ -547,102 +216,43 @@ jobs:
               -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
           fi
 
-          echo ""
-          echo "COMPILATION TERMINEE."
-
-      # =========================================================
-      # 19. VERIFIER APK V21
-      # =========================================================
-      - name: Verifier APK V21
+      # 13. Verifier et preparer l'APK
+      - name: Verifier APK V22
         shell: bash
         run: |
           set -e
 
-          echo "=========================================="
-          echo "VERIFICATION APK V21"
-          echo "=========================================="
-
           APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
-            -type f \
-            -name "*.apk" \
-            -print -quit)
+            -type f -name "*.apk" -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "ERREUR : APK V21 introuvable."
+            echo "ERREUR : APK Release introuvable."
             exit 1
           fi
 
-          echo "APK trouve : $APK"
-
-          echo ""
-          echo "=========================================="
-          echo "VERIFICATION SIGNATURE"
-          echo "=========================================="
-
           apksigner verify --verbose "$APK"
 
-          echo ""
-          echo "SIGNATURE APK VALIDE."
-
-          echo ""
-          echo "=========================================="
-          echo "VERIFICATION INFORMATIONS APK"
-          echo "=========================================="
-
           APK_INFO=$(aapt dump badging "$APK")
-
-          echo "$APK_INFO"
-
-          echo ""
-          echo "Verification package..."
+          echo "$APK_INFO" | head -5
 
           echo "$APK_INFO" | grep \
-            "package: name='com.aistudio.youngestbiz.mbkz'"
+            "package: name='com.aistudio.youngestbiz.mbkz'" || {
+              echo "ERREUR : applicationId inattendu."
+              exit 1
+            }
 
-          echo ""
-          echo "Verification versionCode 21..."
+          mkdir -p release-v22
+          cp "$APK" \
+            release-v22/YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.apk
 
-          echo "$APK_INFO" | grep \
-            "versionCode='21'"
+          echo "APK V22 prepare avec succes."
+          ls -lh release-v22/
 
-          echo ""
-          echo "Verification versionName 1.15.0..."
-
-          echo "$APK_INFO" | grep \
-            "versionName='1.15.0'"
-
-          echo ""
-          echo "=========================================="
-          echo "APK V21 VALIDE"
-          echo "=========================================="
-
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
-
-      # =========================================================
-      # 20. PREPARER ARTIFACT V21
-      # =========================================================
-      - name: Preparer Artifact V21
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "PREPARATION ARTIFACT V21"
-          echo "=========================================="
-
-          mkdir -p release-v21
-
-          cp "$APK_PATH" \
-            "release-v21/YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.apk"
-
-          ls -lh release-v21/
-
-      # =========================================================
-      # 21. PUBLIER ARTIFACT V21
-      # =========================================================
-      - name: Publier Artifact V21
+      # 14. Publier le veritable Artifact V22
+      - name: Publier Artifact V22
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT
-          path: release-v21/YOUNGEST-BUSINESS-V21-WONYAPAY-TRANSFERT.apk
+          name: YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS
+          path: release-v22/YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.apk
           if-no-files-found: error
+          retention-days: 14
