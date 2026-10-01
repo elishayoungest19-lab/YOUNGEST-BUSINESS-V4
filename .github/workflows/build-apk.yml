@@ -1,138 +1,120 @@
-
-name: Build Android APK V22 Rapports Mensuels
+name: Build Android APK V23 Journal Mobile Money
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   build:
-    name: Build Android APK V22
+    name: Build Android APK V23 Journal Mobile Money
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Recuperer le depot
       - name: Recuperer le depot
         uses: actions/checkout@v4
 
-      # 2. Installer Java 17
       - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Installer Android SDK
       - name: Installer Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: ""
 
       - name: Installer les composants Android
-        shell: bash
         run: |
-          set -e
-          yes | sdkmanager --licenses || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
 
-      # 4. Ajouter les outils Android au PATH
-      - name: Configurer Android Build Tools
-        shell: bash
-        run: |
-          set -e
-          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-          test -f "$BUILD_TOOLS/apksigner"
-          test -f "$BUILD_TOOLS/aapt"
-          echo "$BUILD_TOOLS" >> "$GITHUB_PATH"
-
-      # 5. Installer Gradle
       - name: Installer Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # 6. Trouver le ZIP V22
-      - name: Trouver le ZIP V22 Rapports Mensuels
+      - name: Trouver le ZIP V23 Journal Mobile Money
+        id: find_zip
         shell: bash
         run: |
           set -e
-          ZIP_NAME="YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.zip"
-
-          if [ ! -f "$ZIP_NAME" ]; then
-            echo "ERREUR : ZIP V22 introuvable a la racine du depot."
-            find . -maxdepth 3 -type f -name "*.zip" -print
+          ZIP=$(find . -maxdepth 3 -type f -name 'YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY.zip' | sort | tail -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR : ZIP V23 Journal Mobile Money introuvable."
+            find . -maxdepth 3 -type f -name '*V21*.zip' | sort || true
             exit 1
           fi
+          echo "ZIP V23 trouve : $ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
 
-          echo "ZIP V22 selectionne : $ZIP_NAME"
-          ls -lh "$ZIP_NAME"
-          echo "ZIP_PATH=$ZIP_NAME" >> "$GITHUB_ENV"
-
-      # 7. Extraire le projet V22
-      - name: Extraire le projet V22
+      - name: Extraire le projet V23
         shell: bash
         run: |
           set -e
-          rm -rf v22-extracted
-          mkdir -p v22-extracted
-          unzip -q "$ZIP_PATH" -d v22-extracted
+          rm -rf v23-extracted
+          mkdir -p v23-extracted
+          unzip -o "${{ steps.find_zip.outputs.zip }}" -d v23-extracted
 
-          echo "Contenu extrait :"
-          find v22-extracted -maxdepth 3 -type f | head -100
-
-      # 8. Detecter le projet Android
-      - name: Detecter le projet Android V22
+      - name: Detecter le projet Android
         shell: bash
         run: |
           set -e
-
-          SETTINGS_FILE=$(find v22-extracted \
-            -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)
-
-          if [ -z "$SETTINGS_FILE" ]; then
-            echo "ERREUR : projet Gradle Android introuvable dans le ZIP V22."
+          PROJECT_DIR=$(find v23-extracted \( -name settings.gradle -o -name settings.gradle.kts \) -print | head -n 1 | xargs -r dirname)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERREUR : projet Android V20 introuvable."
             exit 1
           fi
-
-          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
-
-          if [ ! -f "$PROJECT_DIR/app/google-services.json" ]; then
-            echo "ERREUR : app/google-services.json introuvable."
-            exit 1
-          fi
-
-          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
-             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERREUR : configuration Gradle du module app introuvable."
-            exit 1
-          fi
-
+          echo "Projet Android : $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android V22 detecte : $PROJECT_DIR"
 
-      # 9. Verifier le contenu du projet
-      - name: Verifier le projet V22
+      - name: Verifier identite V23 et module Journal Mobile Money
         shell: bash
         run: |
           set -e
           cd "$PROJECT_DIR"
+          grep -q "applicationId 'com.aistudio.youngestbiz.mbkz'" app/build.gradle
+          grep -q "versionCode 23" app/build.gradle
+          grep -q "versionName '1.17.0'" app/build.gradle
+          grep -q 'yb_loan_requests' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'moneyJournalPage' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'showMoneyJournalReport' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'ENREGISTRER UN ENVOI EFFECTUÉ' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'moneyJournalPage' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'showMoneyJournalReport' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'ENREGISTRER UN ENVOI EFFECTUÉ' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'attachBureauRequestsListener' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'loanRequestsListenerIsClient' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'whereEqualTo("requesterUid", clientUid)' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'q.clientId=clientUid' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'signInWithEmailAndPassword' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'StxrZBDeUodj7YVPmXRA2AbWcUF2' firestore.rules
+          grep -q 'request.resource.data.status == "EN_ATTENTE"' firestore.rules
+          grep -q 'addOnFailureListener' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          echo "Identite V23 et module Journal Mobile Money verifies."
 
-          echo "Configuration de l'application :"
-          grep -nE "applicationId|versionCode|versionName" \
-            app/build.gradle app/build.gradle.kts 2>/dev/null || true
+      - name: Configurer Firebase
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          if [ -f "app/google-services.json" ]; then
+            echo "Firebase deja configure."
+          elif [ -f "google-services.json" ]; then
+            cp google-services.json app/google-services.json
+          else
+            SOURCE=$(find "$GITHUB_WORKSPACE" -type f -name 'google-services.json' | head -n 1)
+            if [ -n "$SOURCE" ]; then
+              cp "$SOURCE" app/google-services.json
+            else
+              echo "ERREUR : google-services.json introuvable."
+              exit 1
+            fi
+          fi
 
-          echo "Recherche des fonctionnalites de rapports :"
-          grep -RniE "rapport|report|echeance|échéance" \
-            app/src/main 2>/dev/null | head -80 || true
-
-          echo "Verification du projet terminee."
-
-      # 10. Preparer le keystore de signature
       - name: Preparer le keystore Release
         shell: bash
         env:
@@ -141,118 +123,50 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -e
+          cd "$PROJECT_DIR"
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          test -s release-keystore.jks
+          ALIAS=$(keytool -list -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" -v 2>/dev/null | awk -F': ' '/Alias name:/ {print $2; exit}')
+          test -n "$ALIAS"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "Alias Release detecte."
 
-          test -n "$KEYSTORE_BASE64" || {
-            echo "ERREUR : secret KEYSTORE_BASE64 absent."
-            exit 1
-          }
-
-          test -n "$KEYSTORE_PASSWORD" || {
-            echo "ERREUR : secret KEYSTORE_PASSWORD absent."
-            exit 1
-          }
-
-          test -n "$KEY_PASSWORD" || {
-            echo "ERREUR : secret KEY_PASSWORD absent."
-            exit 1
-          }
-
-          echo "$KEYSTORE_BASE64" | base64 --decode \
-            > "$PROJECT_DIR/release-keystore.jks"
-
-          keytool -list \
-            -keystore "$PROJECT_DIR/release-keystore.jks" \
-            -storepass "$KEYSTORE_PASSWORD" >/dev/null
-
-          KEY_ALIAS=$(keytool -list -v \
-            -keystore "$PROJECT_DIR/release-keystore.jks" \
-            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-            | grep "Alias name:" | head -1 \
-            | sed 's/.*Alias name: //')
-
-          test -n "$KEY_ALIAS" || {
-            echo "ERREUR : alias du keystore introuvable."
-            exit 1
-          }
-
-          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "Keystore configure."
-
-      # 11. Nettoyer le projet
-      - name: Nettoyer le projet V22
+      - name: Nettoyer et compiler V23 Release
         shell: bash
         run: |
           set -e
           cd "$PROJECT_DIR"
+          gradle clean --no-daemon
+          gradle :app:assembleRelease --no-daemon
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew clean
-          else
-            gradle clean
-          fi
-
-      # 12. Compiler l'APK V22
-      - name: Compiler APK V22 Release
-        shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-
-          if [ -f "./gradlew" ]; then
-            ./gradlew :app:assembleRelease \
-              -Pandroid.injected.signing.store.file="$PWD/release-keystore.jks" \
-              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-          else
-            gradle :app:assembleRelease \
-              -Pandroid.injected.signing.store.file="$PWD/release-keystore.jks" \
-              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
-              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
-              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
-          fi
-
-      # 13. Verifier et preparer l'APK
-      - name: Verifier APK V22
+      - name: Verifier APK et signature
         shell: bash
         run: |
           set -e
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          echo "APK V21 : $APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          echo "APK Release signe et valide."
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
-          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" \
-            -type f -name "*.apk" -print -quit)
+      - name: Preparer l'APK V23
+        shell: bash
+        run: |
+          set -e
+          mkdir -p release-apk
+          cp "$APK_PATH" "release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk"
+          ls -lh release-apk/
 
-          if [ -z "$APK" ]; then
-            echo "ERREUR : APK Release introuvable."
-            exit 1
-          fi
-
-          apksigner verify --verbose "$APK"
-
-          APK_INFO=$(aapt dump badging "$APK")
-          echo "$APK_INFO" | head -5
-
-          echo "$APK_INFO" | grep \
-            "package: name='com.aistudio.youngestbiz.mbkz'" || {
-              echo "ERREUR : applicationId inattendu."
-              exit 1
-            }
-
-          mkdir -p release-v22
-          cp "$APK" \
-            release-v22/YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.apk
-
-          echo "APK V22 prepare avec succes."
-          ls -lh release-v22/
-
-      # 14. Publier le veritable Artifact V22
-      - name: Publier Artifact V22
+      - name: Publier APK V23 Release
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS
-          path: release-v22/YOUNGEST-BUSINESS-V22-RAPPORTS-MENSUELS.apk
+          name: YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE
+          path: release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
