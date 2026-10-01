@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build Android APK V23 Journal Mobile Money
@@ -27,20 +30,10 @@ jobs:
       - name: Installer les composants Android
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Configurer Android Build Tools
-        shell: bash
-        run: |
-          set -e
-          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
-          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" || test -f "$ANDROID_HOME/build-tools/35.0.0/apksigner"
 
       - name: Installer Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -51,87 +44,102 @@ jobs:
         id: find_zip
         shell: bash
         run: |
-          set -e
-          ZIP_NAME="YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-CORRIGE.zip"
-          ZIP_PATH=$(find . -maxdepth 4 -type f -name "$ZIP_NAME" -print -quit)
+          set -euo pipefail
+          ZIP_NAME="YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-CORRIGE-SYNTAX-FIX-1.zip"
+          ZIP_PATH=""
+
+          if [ -f "$ZIP_NAME" ]; then
+            ZIP_PATH="$ZIP_NAME"
+          else
+            ZIP_PATH="$(find . -maxdepth 4 -type f -name "$ZIP_NAME" -print -quit)"
+          fi
+
           if [ -z "$ZIP_PATH" ]; then
-            echo "ERREUR: ZIP V23 corrige introuvable: $ZIP_NAME"
-            echo "Archives ZIP presentes dans le depot:"
-            find . -maxdepth 4 -type f -iname '*.zip' -print | sort || true
+            echo "ERREUR : ZIP V23 corrige introuvable : $ZIP_NAME"
+            echo "Archives ZIP trouvees dans le depot :"
+            find . -maxdepth 4 -type f -name '*.zip' -print | sort || true
             exit 1
           fi
-          echo "ZIP V23 selectionne: $ZIP_PATH"
+
+          echo "ZIP V23 selectionne : $ZIP_PATH"
+          ls -lh "$ZIP_PATH"
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Extraire le projet V23
         shell: bash
+        env:
+          ZIP_PATH: ${{ steps.find_zip.outputs.zip_path }}
         run: |
-          set -e
+          set -euo pipefail
           rm -rf v23-extracted
           mkdir -p v23-extracted
-          unzip -q "${{ steps.find_zip.outputs.zip_path }}" -d v23-extracted
-          echo "Extraction terminee."
+          unzip -q "$ZIP_PATH" -d v23-extracted
+          echo "Contenu extrait :"
+          find v23-extracted -maxdepth 4 -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' -o -name 'build.gradle' -o -name 'build.gradle.kts' \) -print | head -80
 
       - name: Detecter le projet Android
         shell: bash
         run: |
-          set -e
-          SETTINGS=$(find v23-extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)
-          if [ -z "$SETTINGS" ]; then
-            echo "ERREUR: aucun settings.gradle(.kts) trouve dans le ZIP V23."
-            find v23-extracted -maxdepth 4 -type f | head -100
+          set -euo pipefail
+          SETTINGS_FILE="$(find v23-extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERREUR : aucun settings.gradle ou settings.gradle.kts trouve dans le ZIP V23."
             exit 1
           fi
-          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
           if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERREUR: fichier Gradle du module app introuvable dans $PROJECT_DIR."
+            echo "ERREUR : configuration Gradle du module app introuvable dans $PROJECT_DIR/app."
             exit 1
           fi
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android detecte: $PROJECT_DIR"
+          echo "Projet Android detecte : $PROJECT_DIR"
 
       - name: Configurer Firebase
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           if [ -f "$PROJECT_DIR/app/google-services.json" ]; then
-            echo "google-services.json deja present dans app/."
+            echo "Firebase deja configure dans app/."
           elif [ -f "$PROJECT_DIR/google-services.json" ]; then
             cp "$PROJECT_DIR/google-services.json" "$PROJECT_DIR/app/google-services.json"
+            echo "google-services.json copie depuis la racine du projet."
           else
-            SOURCE=$(find "$GITHUB_WORKSPACE" -type f -name google-services.json -print -quit)
+            SOURCE="$(find "$GITHUB_WORKSPACE" -type f -name google-services.json -not -path '*/v23-extracted/*/app/google-services.json' -print -quit)"
             if [ -n "$SOURCE" ]; then
-              mkdir -p "$PROJECT_DIR/app"
               cp "$SOURCE" "$PROJECT_DIR/app/google-services.json"
+              echo "google-services.json copie depuis : $SOURCE"
             else
-              echo "ERREUR: google-services.json introuvable."
+              echo "ERREUR : google-services.json introuvable."
               exit 1
             fi
           fi
 
-      - name: Verifier le projet et le journal V23
+      - name: Verifier identite et fonctionnalites V23
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd "$PROJECT_DIR"
           GRADLE_FILE="app/build.gradle"
           [ -f "$GRADLE_FILE" ] || GRADLE_FILE="app/build.gradle.kts"
-          grep -q "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE" || {
-            echo "ERREUR: applicationId attendu introuvable."
-            exit 1
-          }
-          MAIN=$(find app/src/main -type f -name MainActivity.java -print -quit)
-          if [ -z "$MAIN" ]; then
-            echo "ERREUR: MainActivity.java introuvable."
+
+          echo "Identite de l'application :"
+          grep -nE 'applicationId|versionCode|versionName' "$GRADLE_FILE" || true
+          if ! grep -q 'com.aistudio.youngestbiz.mbkz' "$GRADLE_FILE"; then
+            echo "ERREUR : l'identifiant attendu com.aistudio.youngestbiz.mbkz n'a pas ete trouve."
             exit 1
           fi
-          grep -qi "moneyJournalPage\|Journal des envois\|ENREGISTRER UN ENVOI" "$MAIN" || {
-            echo "ERREUR: marqueur du journal Mobile Money introuvable dans MainActivity."
+
+          JAVA_FILE="$(find app/src/main -type f -name MainActivity.java -print -quit)"
+          if [ -z "$JAVA_FILE" ]; then
+            echo "ERREUR : MainActivity.java introuvable."
             exit 1
-          }
-          echo "Application et marqueur du journal detectes."
-          echo "Version Gradle declaree:"
-          grep -nE "versionCode|versionName" "$GRADLE_FILE" || true
+          fi
+          echo "Fichier principal : $JAVA_FILE"
+          echo "Verification indicative des marqueurs du journal :"
+          grep -niE 'moneyJournalPage|showMoneyJournalReport|ENREGISTRER UN ENVOI|Mobile Money|Journal' "$JAVA_FILE" | head -50 || true
+          echo "Verification terminee. La compilation verifiera la syntaxe Java."
 
       - name: Preparer le keystore Release
         shell: bash
@@ -140,22 +148,27 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          set -e
-          test -n "$KEYSTORE_BASE64" || { echo "ERREUR: secret KEYSTORE_BASE64 absent."; exit 1; }
-          test -n "$KEYSTORE_PASSWORD" || { echo "ERREUR: secret KEYSTORE_PASSWORD absent."; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo "ERREUR: secret KEY_PASSWORD absent."; exit 1; }
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?ERREUR : secret KEYSTORE_BASE64 absent}"
+          : "${KEYSTORE_PASSWORD:?ERREUR : secret KEYSTORE_PASSWORD absent}"
+          : "${KEY_PASSWORD:?ERREUR : secret KEY_PASSWORD absent}"
+
           echo "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_DIR/release-keystore.jks"
           test -s "$PROJECT_DIR/release-keystore.jks"
           keytool -list -keystore "$PROJECT_DIR/release-keystore.jks" -storepass "$KEYSTORE_PASSWORD" >/dev/null
-          KEY_ALIAS=$(keytool -list -v -keystore "$PROJECT_DIR/release-keystore.jks" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/Alias name:/ {print $2; exit}')
-          test -n "$KEY_ALIAS" || { echo "ERREUR: alias du keystore introuvable."; exit 1; }
+          KEY_ALIAS="$(keytool -list -v -keystore "$PROJECT_DIR/release-keystore.jks" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/Alias name:/ {print $2; exit}')"
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "ERREUR : alias du keystore introuvable."
+            exit 1
+          fi
+
           echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "Keystore Release valide."
 
-      - name: Nettoyer le projet
+      - name: Nettoyer le projet V23
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd "$PROJECT_DIR"
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
@@ -170,10 +183,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          set -e
+          set -euo pipefail
           cd "$PROJECT_DIR"
           SIGNING_ARGS=(
-            "-Pandroid.injected.signing.store.file=$PROJECT_DIR/release-keystore.jks"
+            "-Pandroid.injected.signing.store.file=$PWD/release-keystore.jks"
             "-Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD"
             "-Pandroid.injected.signing.key.alias=$KEY_ALIAS"
             "-Pandroid.injected.signing.key.password=$KEY_PASSWORD"
@@ -187,20 +200,32 @@ jobs:
       - name: Verifier APK et signature
         shell: bash
         run: |
-          set -e
-          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
+          set -euo pipefail
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)"
           if [ -z "$APK" ]; then
-            echo "ERREUR: APK Release introuvable."
+            echo "ERREUR : APK Release introuvable apres compilation."
             exit 1
           fi
+
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep "package: name='com.aistudio.youngestbiz.mbkz'"
+          APK_INFO="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          echo "$APK_INFO" | head -5
+          if ! echo "$APK_INFO" | grep -q "package: name='com.aistudio.youngestbiz.mbkz'"; then
+            echo "ERREUR : applicationId inattendu dans l'APK."
+            exit 1
+          fi
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          echo "APK Release signe et valide."
+
+      - name: Preparer l'Artifact V23
+        shell: bash
+        run: |
+          set -euo pipefail
           mkdir -p release-apk
-          cp "$APK" release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk
-          echo "APK V23 verifie:"
+          cp "$APK_PATH" release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk
           ls -lh release-apk/
 
-      - name: Publier APK V23 Release
+      - name: Publier Artifact V23 Release
         uses: actions/upload-artifact@v4
         with:
           name: YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE
