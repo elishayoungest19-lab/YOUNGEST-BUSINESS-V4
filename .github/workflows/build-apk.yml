@@ -1,5 +1,5 @@
 
-name: Build YOUNGEST'S BUSINESS V24 Separate Mobile Money Reports
+name: Build YOUNGEST'S BUSINESS V24 Reports and Transfers
 
 on:
   workflow_dispatch:
@@ -36,26 +36,24 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Select and extract the NEW V24 ZIP
+      - name: Select and extract V24 source ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_NAME='YOUNGEST-BUSINESS-V24-JOURNAL-RAPPORTS-SEPAR%C3%89S.zip'
+          ZIP_NAME='YOUNGEST-BUSINESS-V24-JOURNAL-P2P-INTERFACE-CORRIGEE-2.zip'
           ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
 
-          echo "Recherche du nouveau ZIP : $ZIP_NAME"
+          echo "Searching for source ZIP: $ZIP_NAME"
 
           if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::Le nouveau ZIP V24 est introuvable."
-            echo "Liste des ZIP présents à la racine :"
+            echo "::error::V24 source ZIP not found: $ZIP_NAME"
+            echo "ZIP files available at repository root:"
             find "$GITHUB_WORKSPACE" -maxdepth 1 -type f \
               -iname '*.zip' -printf '%f\n'
             exit 1
           fi
-
-          echo "ZIP sélectionné : $ZIP_NAME"
 
           mkdir -p "$RUNNER_TEMP/v24-source"
           unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v24-source"
@@ -65,16 +63,16 @@ jobs:
             -print -quit)"
 
           if [ -z "$SETTINGS_PATH" ]; then
-            echo "::error::Aucun settings.gradle trouvé dans le ZIP."
+            echo "::error::No settings.gradle found in source ZIP."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_PATH")"
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Projet Android : $PROJECT_DIR"
+          echo "Android project directory: $PROJECT_DIR"
 
-      - name: Verify V24 source and report indicators
+      - name: Verify source and Firebase configuration
         shell: bash
         env:
           PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
@@ -82,40 +80,40 @@ jobs:
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
 
           test -f "$MAIN" || {
-            echo "::error::MainActivity.java introuvable."
+            echo "::error::MainActivity.java not found."
             exit 1
           }
 
-          test -f "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json introuvable."
+          test -s "$PROJECT_DIR/app/google-services.json" || {
+            echo "::error::google-services.json not found or empty."
             exit 1
           }
+
+          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
 
           if [ ! -f "$BUILD_FILE" ]; then
             BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
           fi
 
           test -f "$BUILD_FILE" || {
-            echo "::error::Fichier Gradle de l'application introuvable."
+            echo "::error::App Gradle build file not found."
             exit 1
           }
 
-          echo "=== Version source ==="
+          echo "=== Source version ==="
           grep -nE 'versionCode|versionName' "$BUILD_FILE" || true
 
           if ! grep -Eq 'versionCode[[:space:]]*=?[[:space:]]*24([^0-9]|$)' "$BUILD_FILE"; then
-            echo "::error::Le code source doit déclarer versionCode 24."
+            echo "::error::Source must declare versionCode 24."
             exit 1
           fi
 
-          echo "=== Indices de rapports et statuts dans MainActivity ==="
-          grep -niE 'journalier|quotidien|daily|mensuel|monthly|rapport|historique|effectuée|effectuee|échouée|echouee|en attente|pending|frais|CDF|USD' "$MAIN" || true
+          echo "=== Journal and report implementation indicators ==="
+          grep -niE 'firestore|FirebaseFirestore|addSnapshotListener|SharedPreferences|journal|rapport|historique|monthly|daily|loan|transfer|remboursement|echeance|échéance' "$MAIN" || true
 
-          echo "Vérification du numéro de version terminée."
-          echo "Les fonctions devront aussi être testées dans l'application."
+          echo "Source structure and version checks passed."
 
       - name: Prepare release signing
         shell: bash
@@ -131,8 +129,8 @@ jobs:
           if [ -z "${KEYSTORE_BASE64:-}" ] || \
              [ -z "${KEYSTORE_PASSWORD:-}" ] || \
              [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Secrets de signature manquants."
-            echo "Vérifiez KEYSTORE_BASE64, KEYSTORE_PASSWORD et KEY_PASSWORD."
+            echo "::error::Release signing secrets are missing."
+            echo "Check KEYSTORE_BASE64, KEYSTORE_PASSWORD and KEY_PASSWORD."
             exit 1
           fi
 
@@ -151,8 +149,8 @@ jobs:
           fi
 
           if [ -z "$ALIAS" ]; then
-            echo "::error::Alias de signature introuvable."
-            echo "Configurez le secret KEY_ALIAS dans GitHub."
+            echo "::error::Signing alias not found."
+            echo "Configure the KEY_ALIAS GitHub secret."
             exit 1
           fi
 
@@ -185,7 +183,7 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           test -s "$APK" || {
-            echo "::error::APK release introuvable."
+            echo "::error::Release APK not found."
             exit 1
           }
 
@@ -198,23 +196,23 @@ jobs:
           echo "$BADGING" | head -n 3
 
           echo "$BADGING" | grep -q "versionCode='24'" || {
-            echo "::error::L'APK généré n'est pas en version 24."
+            echo "::error::Built APK is not versionCode 24."
             exit 1
           }
 
           mkdir -p "$GITHUB_WORKSPACE/release-apk"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-SEPARATE-REPORTS-RELEASE.apk"
+            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-SEPARATE-REPORTS-RELEASE.apk" \
+            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk" \
             | tee "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
 
       - name: Upload verified V24 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V24-SEPARATE-REPORTS-RELEASE
+          name: YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE
           path: release-apk/*
           if-no-files-found: error
           retention-days: 30
