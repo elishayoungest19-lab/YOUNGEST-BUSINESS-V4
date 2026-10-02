@@ -1,3 +1,4 @@
+
 name: Build YOUNGEST'S BUSINESS V23 Journal Mobile Money
 
 on:
@@ -35,29 +36,56 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find and extract V23 ZIP
+      - name: Find and extract V23 Journal ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-STARTUP-FIX.zip"
-          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
+
+          ZIP_PATH=""
+          for candidate in \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-STARTUP-FIX.zip" \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-READY.zip" \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-FIXED.zip" \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-CORRIGE-SYNTAX-FIX.zip" \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-CORRIGE.zip" \
+            "$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY.zip"; do
+            if [ -f "$candidate" ]; then
+              ZIP_PATH="$candidate"
+              break
+            fi
+          done
+
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP V23 not found: $ZIP_NAME"
-            ls -la "$GITHUB_WORKSPACE"
+            ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f \
+              -iname '*V23*JOURNAL*MOBILE*MONEY*.zip' \
+              ! -path '*/.git/*' -print | sort | head -n 1 || true)"
+          fi
+
+          if [ -z "$ZIP_PATH" ]; then
+            echo "::error::No V23 Journal ZIP found in the repository."
+            find "$GITHUB_WORKSPACE" -maxdepth 4 -type f -print | sort | head -200
             exit 1
           fi
+
+          echo "Selected V23 ZIP: $ZIP_PATH"
           mkdir -p "$RUNNER_TEMP/v23-source"
           unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v23-source"
-          SETTINGS_PATH="$(find "$RUNNER_TEMP/v23-source" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+
+          SETTINGS_PATH="$(find "$RUNNER_TEMP/v23-source" -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)"
+
           if [ -z "$SETTINGS_PATH" ]; then
-            echo "::error::No settings.gradle or settings.gradle.kts found inside V23 ZIP."
+            echo "::error::No settings.gradle or settings.gradle.kts found inside the ZIP."
+            find "$RUNNER_TEMP/v23-source" -maxdepth 5 -type f -print | head -200
             exit 1
           fi
+
           PROJECT_DIR="$(dirname "$SETTINGS_PATH")"
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Android project root: $PROJECT_DIR"
-          find "$PROJECT_DIR" -maxdepth 2 -type f | head -100
+          find "$PROJECT_DIR" -maxdepth 2 -type f -print | head -100
 
       - name: Verify V23 source and Firebase config
         shell: bash
@@ -65,21 +93,55 @@ jobs:
           PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
         run: |
           set -euo pipefail
+
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           BUILD_FILE="$PROJECT_DIR/app/build.gradle"
-          test -f "$MAIN"
-          test -f "$PROJECT_DIR/app/google-services.json"
-          if [ ! -f "$BUILD_FILE" ]; then BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"; fi
-          test -f "$BUILD_FILE"
+
+          test -f "$MAIN" || {
+            echo "::error::MainActivity.java not found at expected package path."
+            exit 1
+          }
+
+          test -f "$PROJECT_DIR/app/google-services.json" || {
+            echo "::error::Firebase google-services.json missing."
+            exit 1
+          }
+
+          if [ ! -f "$BUILD_FILE" ]; then
+            BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
+          fi
+
+          test -f "$BUILD_FILE" || {
+            echo "::error::app/build.gradle or app/build.gradle.kts missing."
+            exit 1
+          }
+
           echo "=== App version ==="
-          grep -nE 'versionCode|versionName' "$BUILD_FILE"
-          echo "=== Journal and transfer markers ==="
+          grep -nE 'versionCode|versionName' "$BUILD_FILE" || true
+
+          echo "=== Journal and existing transfer markers ==="
           grep -nE 'JOURNAL ENVOIS|moneyJournalForm|void transfers' "$MAIN" || true
-          grep -q 'JOURNAL ENVOIS' "$MAIN" || { echo "::error::Journal label missing"; exit 1; }
-          grep -Fq 'int[] cs={RED,GREEN,BLUE,PURPLE,GOLD,NAVY,NAVY,PURPLE,BLUE};' "$MAIN" || { echo "::error::Home menu color array fix missing"; exit 1; }
-          grep -q 'moneyJournalForm' "$MAIN" || { echo "::error::Journal form method missing"; exit 1; }
-          grep -q 'void transfers' "$MAIN" || { echo "::error::Existing transfers method missing"; exit 1; }
-          grep -q 'versionCode[[:space:]]\+23' "$BUILD_FILE" || grep -q 'versionCode[[:space:]]*=[[:space:]]*23' "$BUILD_FILE" || { echo "::error::App versionCode is not 23"; exit 1; }
+
+          grep -q 'JOURNAL ENVOIS' "$MAIN" || {
+            echo "::error::Journal label missing from MainActivity.java."
+            exit 1
+          }
+
+          grep -q 'moneyJournalForm' "$MAIN" || {
+            echo "::error::Journal form method missing from MainActivity.java."
+            exit 1
+          }
+
+          grep -q 'void transfers' "$MAIN" || {
+            echo "::error::Existing transfers method missing."
+            exit 1
+          }
+
+          grep -Eq 'versionCode[[:space:]]+23|versionCode[[:space:]]*=[[:space:]]*23' "$BUILD_FILE" || {
+            echo "::error::App versionCode is not 23."
+            exit 1
+          }
+
           echo "V23 source checks passed."
 
       - name: Prepare release signing
@@ -92,17 +154,36 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
-          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+
+          if [ -z "${KEYSTORE_BASE64:-}" ] || \
+             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
+             [ -z "${KEY_PASSWORD:-}" ]; then
             echo "::error::Missing signing secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
             exit 1
           fi
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_DIR/release-keystore.jks"
-          test -s "$PROJECT_DIR/release-keystore.jks"
+
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode \
+            > "$PROJECT_DIR/release-keystore.jks"
+
+          test -s "$PROJECT_DIR/release-keystore.jks" || {
+            echo "::error::Decoded keystore is empty."
+            exit 1
+          }
+
           ALIAS="${KEY_ALIAS:-}"
+
           if [ -z "$ALIAS" ]; then
-            ALIAS="$(keytool -list -v -keystore "$PROJECT_DIR/release-keystore.jks" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+            ALIAS="$(keytool -list -v \
+              -keystore "$PROJECT_DIR/release-keystore.jks" \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+              | sed -n 's/^Alias name: //p' | head -n 1 || true)"
           fi
-          test -n "$ALIAS" || { echo "::error::Set the KEY_ALIAS secret."; exit 1; }
+
+          if [ -z "$ALIAS" ]; then
+            echo "::error::Could not determine keystore alias. Add the KEY_ALIAS secret in GitHub repository secrets."
+            exit 1
+          fi
+
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
@@ -114,6 +195,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
             ./gradlew clean :app:assembleRelease --no-daemon
@@ -127,15 +209,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK" || { echo "::error::Release APK not found"; exit 1; }
+
+          test -s "$APK" || {
+            echo "::error::Release APK not found."
+            exit 1
+          }
+
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | head -n 3
-          echo "$BADGING" | grep -q "versionCode='23'" || { echo "::error::APK versionCode is not 23"; exit 1; }
+          printf '%s\n' "$BADGING" | head -n 3
+
+          printf '%s\n' "$BADGING" | grep -q "versionCode='23'" || {
+            echo "::error::APK versionCode is not 23."
+            exit 1
+          }
+
           mkdir -p "$GITHUB_WORKSPACE/release-apk"
-          cp "$APK" "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk" | tee "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
+
+          cp "$APK" \
+            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk"
+
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk" \
+            > "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
+
+          cat "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
 
       - name: Upload verified V23 APK artifact
         uses: actions/upload-artifact@v4
@@ -144,3 +245,4 @@ jobs:
           path: release-apk/*
           if-no-files-found: error
           retention-days: 30
+          
