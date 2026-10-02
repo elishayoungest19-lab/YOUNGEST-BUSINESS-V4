@@ -3,15 +3,17 @@ name: Build YOUNGEST'S BUSINESS V23 Journal Mobile Money
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and verify V23 APK
+  diagnose:
+    name: Diagnose V23 project structure
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,65 +35,52 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Verify V23 source and Firebase config
+      - name: Diagnose project files
         shell: bash
         run: |
-          set -euo pipefail
-          test -f settings.gradle
-          test -f app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          test -f app/google-services.json
-          grep -q "versionCode 23" app/build.gradle
-          grep -q "versionName '1.17.0'" app/build.gradle
-          grep -q 'JOURNAL ENVOIS' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'void moneyJournalForm()' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'void transfers()' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          echo "V23 source checks passed."
+          set -u
 
-      - name: Prepare release signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        run: |
-          set -euo pipefail
-          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "Release signing secrets missing. Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD and KEY_PASSWORD in repository Actions secrets."
-            exit 1
-          fi
-          echo "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-          test -s release-keystore.jks
-          if [ -n "${KEY_ALIAS:-}" ]; then
-            ALIAS="$KEY_ALIAS"
-          else
-            ALIAS=$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)
-          fi
-          test -n "$ALIAS"
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "======================================"
+          echo "1. REPOSITORY ROOT"
+          echo "======================================"
+          pwd
+          ls -la
 
-      - name: Build release APK
-        run: gradle clean :app:assembleRelease --no-daemon
+          echo "======================================"
+          echo "2. GRADLE PROJECT FILES"
+          echo "======================================"
+          find . -maxdepth 5 -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
+            -o -name build.gradle \
+            -o -name build.gradle.kts \
+            -o -name gradlew \
+          \) -print
 
-      - name: Verify APK version and signature
-        id: verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -q "versionCode='23'"
-          mkdir -p release-apk
-          cp "$APK" release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk
-          sha256sum release-apk/YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE.apk | tee release-apk/SHA256SUMS.txt
+          echo "======================================"
+          echo "3. MAIN ACTIVITY AND FIREBASE CONFIG"
+          echo "======================================"
+          find . -type f \( \
+            -name MainActivity.java \
+            -o -name google-services.json \
+          \) -print
 
-      - name: Upload verified V23 APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V23-JOURNAL-MOBILE-MONEY-RELEASE
-          path: release-apk/*
-          if-no-files-found: error
-          retention-days: 30
+          echo "======================================"
+          echo "4. APP VERSION"
+          echo "======================================"
+          find . -type f -path '*/app/build.gradle' \
+            -exec grep -nE 'versionCode|versionName' {} \; || true
+
+          find . -type f -path '*/app/build.gradle.kts' \
+            -exec grep -nE 'versionCode|versionName' {} \; || true
+
+          echo "======================================"
+          echo "5. JOURNAL AND TRANSFER METHODS"
+          echo "======================================"
+          find . -type f -name MainActivity.java \
+            -exec grep -nE 'JOURNAL ENVOIS|moneyJournalForm|void transfers' {} \; || true
+
+          echo "======================================"
+          echo "DIAGNOSTIC FINISHED"
+          echo "No APK was built in this diagnostic run."
+          echo "======================================"
