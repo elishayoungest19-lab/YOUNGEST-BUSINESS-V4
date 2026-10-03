@@ -42,20 +42,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_NAME='YOUNGEST-BUSINESS-V24-JOURNAL-P2P-INTERFACE-CORRIGEE-2.zip'
+          ZIP_NAME='YOUNGEST-BUSINESS-V24-JOURNAL-PDF-DATE-FINAL.zip'
           ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
 
-          echo "Searching for source ZIP: $ZIP_NAME"
+          echo "Expected source ZIP: $ZIP_NAME"
 
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::V24 source ZIP not found: $ZIP_NAME"
-            echo "ZIP files available at repository root:"
+          if [ ! -s "$ZIP_PATH" ]; then
+            echo "::error::Expected source ZIP is missing or empty: $ZIP_NAME"
+            echo "ZIP files found at repository root:"
             find "$GITHUB_WORKSPACE" -maxdepth 1 -type f \
               -iname '*.zip' -printf '%f\n'
             exit 1
           fi
 
+          SOURCE_SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
+
+          echo "source_zip=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "source_sha256=$SOURCE_SHA256" >> "$GITHUB_OUTPUT"
+
+          echo "Source ZIP: $ZIP_NAME"
+          echo "Source ZIP SHA-256: $SOURCE_SHA256"
+
           mkdir -p "$RUNNER_TEMP/v24-source"
+
+          unzip -tq "$ZIP_PATH"
           unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v24-source"
 
           SETTINGS_PATH="$(find "$RUNNER_TEMP/v24-source" -type f \
@@ -81,8 +91,8 @@ jobs:
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          test -f "$MAIN" || {
-            echo "::error::MainActivity.java not found."
+          test -s "$MAIN" || {
+            echo "::error::MainActivity.java not found or empty."
             exit 1
           }
 
@@ -110,8 +120,10 @@ jobs:
             exit 1
           fi
 
-          echo "=== Journal and report implementation indicators ==="
-          grep -niE 'firestore|FirebaseFirestore|addSnapshotListener|SharedPreferences|journal|rapport|historique|monthly|daily|loan|transfer|remboursement|echeance|échéance' "$MAIN" || true
+          echo "=== Journal and report indicators ==="
+          grep -niE \
+            'PdfDocument|journal|rapport|historique|monthly|daily|CDF|USD|transfer|transfert|Firestore|FirebaseFirestore' \
+            "$MAIN" || true
 
           echo "Source structure and version checks passed."
 
@@ -145,7 +157,8 @@ jobs:
             ALIAS="$(keytool -list -v \
               -keystore "$PROJECT_DIR/release-keystore.jks" \
               -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | sed -n 's/^Alias name: //p' | head -n 1 || true)"
+              | sed -n 's/^Alias name: //p' \
+              | head -n 1 || true)"
           fi
 
           if [ -z "$ALIAS" ]; then
@@ -174,8 +187,11 @@ jobs:
           fi
 
       - name: Verify APK version and signature
+        id: verify
         env:
           PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
+          SOURCE_ZIP: ${{ steps.source.outputs.source_zip }}
+          SOURCE_SHA256: ${{ steps.source.outputs.source_sha256 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -202,12 +218,26 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/release-apk"
 
-          cp "$APK" \
-            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk"
+          APK_NAME="YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk"
 
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-apk/YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk" \
+          cp "$APK" "$GITHUB_WORKSPACE/release-apk/$APK_NAME"
+
+          APK_SHA256="$(sha256sum "$GITHUB_WORKSPACE/release-apk/$APK_NAME" | awk '{print $1}')"
+
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          sha256sum "$GITHUB_WORKSPACE/release-apk/$APK_NAME" \
             | tee "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
+
+          {
+            echo "Source ZIP: $SOURCE_ZIP"
+            echo "Source ZIP SHA-256: $SOURCE_SHA256"
+            echo "Source commit: $GITHUB_SHA"
+            echo "APK file: $APK_NAME"
+            echo "APK SHA-256: $APK_SHA256"
+            echo "APK versionCode: 24"
+            echo "APK signature verification: PASSED"
+          } > "$GITHUB_WORKSPACE/release-apk/BUILD-PROVENANCE.txt"
 
       - name: Upload verified V24 APK artifact
         uses: actions/upload-artifact@v4
@@ -216,3 +246,20 @@ jobs:
           path: release-apk/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish build summary
+        if: always()
+        env:
+          SOURCE_ZIP: ${{ steps.source.outputs.source_zip }}
+          SOURCE_SHA256: ${{ steps.source.outputs.source_sha256 }}
+          APK_SHA256: ${{ steps.verify.outputs.apk_sha256 }}
+        run: |
+          {
+            echo "## YOUNGEST'S BUSINESS V24 build"
+            echo ""
+            echo "- Source ZIP: ${SOURCE_ZIP:-not identified}"
+            echo "- Source ZIP SHA-256: ${SOURCE_SHA256:-not available}"
+            echo "- APK SHA-256: ${APK_SHA256:-not available}"
+            echo "- Commit: $GITHUB_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+          
