@@ -1,5 +1,5 @@
 
-name: Build YOUNGEST'S BUSINESS V24 Reports and Transfers
+name: Build YOUNGEST'S BUSINESS V25 Reports and Transfers
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Extract, build and verify V24 APK
+    name: Extract, build and verify V25 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -36,19 +36,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Select and extract V24 source ZIP
+      - name: Select and extract V25 source ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_NAME='YOUNGEST-BUSINESS-V24-JOURNAL-PDF-DATE-FINAL.zip'
+          ZIP_NAME='YOUNGEST-BUSINESS-V25-JOURNAL-PDF-DATE-CORRIGE.zip'
           ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
 
           echo "Expected source ZIP: $ZIP_NAME"
 
           if [ ! -s "$ZIP_PATH" ]; then
-            echo "::error::Expected source ZIP is missing or empty: $ZIP_NAME"
+            echo "::error::V25 source ZIP is missing or empty: $ZIP_NAME"
             echo "ZIP files found at repository root:"
             find "$GITHUB_WORKSPACE" -maxdepth 1 -type f \
               -iname '*.zip' -printf '%f\n'
@@ -60,25 +60,21 @@ jobs:
           echo "source_zip=$ZIP_NAME" >> "$GITHUB_OUTPUT"
           echo "source_sha256=$SOURCE_SHA256" >> "$GITHUB_OUTPUT"
 
-          echo "Source ZIP: $ZIP_NAME"
-          echo "Source ZIP SHA-256: $SOURCE_SHA256"
-
-          mkdir -p "$RUNNER_TEMP/v24-source"
-
           unzip -tq "$ZIP_PATH"
-          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v24-source"
 
-          SETTINGS_PATH="$(find "$RUNNER_TEMP/v24-source" -type f \
+          mkdir -p "$RUNNER_TEMP/v25-source"
+          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v25-source"
+
+          SETTINGS_PATH="$(find "$RUNNER_TEMP/v25-source" -type f \
             \( -name settings.gradle -o -name settings.gradle.kts \) \
             -print -quit)"
 
           if [ -z "$SETTINGS_PATH" ]; then
-            echo "::error::No settings.gradle found in source ZIP."
+            echo "::error::No settings.gradle found in the ZIP."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS_PATH")"
-
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Android project directory: $PROJECT_DIR"
 
@@ -90,18 +86,17 @@ jobs:
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
 
           test -s "$MAIN" || {
-            echo "::error::MainActivity.java not found or empty."
+            echo "::error::MainActivity.java missing or empty."
             exit 1
           }
 
           test -s "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json not found or empty."
+            echo "::error::google-services.json missing or empty."
             exit 1
           }
-
-          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
 
           if [ ! -f "$BUILD_FILE" ]; then
             BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
@@ -112,20 +107,19 @@ jobs:
             exit 1
           }
 
-          echo "=== Source version ==="
+          echo "=== Android version ==="
           grep -nE 'versionCode|versionName' "$BUILD_FILE" || true
 
-          if ! grep -Eq 'versionCode[[:space:]]*=?[[:space:]]*24([^0-9]|$)' "$BUILD_FILE"; then
-            echo "::error::Source must declare versionCode 24."
+          if ! grep -Eq 'versionCode[[:space:]]*=?[[:space:]]*25([^0-9]|$)' "$BUILD_FILE"; then
+            echo "::error::The source ZIP must declare versionCode 25."
             exit 1
           fi
 
-          echo "=== Journal and report indicators ==="
-          grep -niE \
-            'PdfDocument|journal|rapport|historique|monthly|daily|CDF|USD|transfer|transfert|Firestore|FirebaseFirestore' \
+          echo "=== Journal/PDF source indicators ==="
+          grep -niE 'PdfDocument|journal|rapport|historique|CDF|USD|transfer|transfert' \
             "$MAIN" || true
 
-          echo "Source structure and version checks passed."
+          echo "Source checks passed."
 
       - name: Prepare release signing
         shell: bash
@@ -141,8 +135,8 @@ jobs:
           if [ -z "${KEYSTORE_BASE64:-}" ] || \
              [ -z "${KEYSTORE_PASSWORD:-}" ] || \
              [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Release signing secrets are missing."
-            echo "Check KEYSTORE_BASE64, KEYSTORE_PASSWORD and KEY_PASSWORD."
+            echo "::error::Missing release signing secrets."
+            echo "Required: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
             exit 1
           fi
 
@@ -157,13 +151,11 @@ jobs:
             ALIAS="$(keytool -list -v \
               -keystore "$PROJECT_DIR/release-keystore.jks" \
               -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | sed -n 's/^Alias name: //p' \
-              | head -n 1 || true)"
+              | sed -n 's/^Alias name: //p' | head -n 1 || true)"
           fi
 
           if [ -z "$ALIAS" ]; then
-            echo "::error::Signing alias not found."
-            echo "Configure the KEY_ALIAS GitHub secret."
+            echo "::error::Signing alias not found. Configure KEY_ALIAS."
             exit 1
           fi
 
@@ -211,18 +203,18 @@ jobs:
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | head -n 3
 
-          echo "$BADGING" | grep -q "versionCode='24'" || {
-            echo "::error::Built APK is not versionCode 24."
+          echo "$BADGING" | grep -q "versionCode='25'" || {
+            echo "::error::Built APK is not versionCode 25."
             exit 1
           }
 
           mkdir -p "$GITHUB_WORKSPACE/release-apk"
 
-          APK_NAME="YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE.apk"
-
+          APK_NAME="YOUNGEST-BUSINESS-V25-REPORTS-TRANSFERS-RELEASE.apk"
           cp "$APK" "$GITHUB_WORKSPACE/release-apk/$APK_NAME"
 
-          APK_SHA256="$(sha256sum "$GITHUB_WORKSPACE/release-apk/$APK_NAME" | awk '{print $1}')"
+          APK_SHA256="$(sha256sum \
+            "$GITHUB_WORKSPACE/release-apk/$APK_NAME" | awk '{print $1}')"
 
           echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
 
@@ -235,14 +227,14 @@ jobs:
             echo "Source commit: $GITHUB_SHA"
             echo "APK file: $APK_NAME"
             echo "APK SHA-256: $APK_SHA256"
-            echo "APK versionCode: 24"
+            echo "APK versionCode: 25"
             echo "APK signature verification: PASSED"
           } > "$GITHUB_WORKSPACE/release-apk/BUILD-PROVENANCE.txt"
 
-      - name: Upload verified V24 APK artifact
+      - name: Upload verified V25 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V24-REPORTS-TRANSFERS-RELEASE
+          name: YOUNGEST-BUSINESS-V25-REPORTS-TRANSFERS-RELEASE
           path: release-apk/*
           if-no-files-found: error
           retention-days: 30
@@ -255,11 +247,10 @@ jobs:
           APK_SHA256: ${{ steps.verify.outputs.apk_sha256 }}
         run: |
           {
-            echo "## YOUNGEST'S BUSINESS V24 build"
+            echo "## YOUNGEST'S BUSINESS V25 build"
             echo ""
             echo "- Source ZIP: ${SOURCE_ZIP:-not identified}"
             echo "- Source ZIP SHA-256: ${SOURCE_SHA256:-not available}"
             echo "- APK SHA-256: ${APK_SHA256:-not available}"
             echo "- Commit: $GITHUB_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
-          
