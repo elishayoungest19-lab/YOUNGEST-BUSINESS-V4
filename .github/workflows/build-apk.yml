@@ -1,4 +1,5 @@
-name: Build YOUNGEST'S BUSINESS V28 Chat Notifications
+
+name: Build YOUNGEST'S BUSINESS V29 Chat Message Fix
 
 on:
   workflow_dispatch:
@@ -11,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V28 APK
+    name: Build and verify signed V29 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -35,53 +36,45 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find and extract V28 source ZIP
+      - name: Find and extract V29 source ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
-          ZIP_PATH=""
-
-          for NAME in \
-            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-CORRIGE-WORKFLOW-FIX.zip" \
-            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-CORRIGE.zip" \
-            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip" \
-            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.zip"
-          do
-            ZIP_PATH="$(find "$ROOT" -maxdepth 5 -type f -name "$NAME" -print -quit)"
-            if [ -n "$ZIP_PATH" ]; then
-              echo "ZIP trouvé : $ZIP_PATH"
-              break
-            fi
-          done
+          ZIP_NAME="YOUNGEST-BUSINESS-V29-CHAT-ENVOI-FIX-source.zip"
+          ZIP_PATH="$(find "$ROOT" -maxdepth 5 -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Aucun ZIP source V28 reconnu dans le dépôt."
-            find "$ROOT" -type f -iname '*.zip' -print || true
+            echo "::error::ZIP V29 introuvable : $ZIP_NAME"
+            echo "Fichiers ZIP trouvés dans le dépôt :"
+            find "$ROOT" -maxdepth 5 -type f -iname '*.zip' -print || true
             exit 1
           fi
 
+          echo "ZIP source trouvé : $ZIP_PATH"
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v28-source"
+          DEST="$RUNNER_TEMP/v29-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          SETTINGS="$(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          SETTINGS="$(find "$DEST" -type f \( \
+            -name settings.gradle -o \
+            -name settings.gradle.kts \
+          \) -print -quit)"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::Fichier settings.gradle introuvable dans le ZIP."
-            find "$DEST" -maxdepth 4 -type f -print || true
+            echo "::error::settings.gradle introuvable dans le ZIP V29."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Projet Android trouvé dans : $PROJECT_DIR"
+          echo "Projet Android : $PROJECT_DIR"
 
-      - name: Verify V28 source and chat backend
+      - name: Verify V29 source and chat components
         shell: bash
         run: |
           set -euo pipefail
@@ -92,19 +85,45 @@ jobs:
           RULES="$PROJECT_DIR/firestore.rules"
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
-          test -f "$MAIN" || { echo "::error::MainActivity.java introuvable"; exit 1; }
-          test -f "$SERVICE" || { echo "::error::AppNotificationService.java introuvable"; exit 1; }
-          test -f "$GRADLE" || { echo "::error::app/build.gradle introuvable"; exit 1; }
-          test -f "$PROJECT_DIR/app/google-services.json" || { echo "::error::google-services.json introuvable"; exit 1; }
-          test -f "$RULES" || { echo "::error::firestore.rules introuvable"; exit 1; }
-          test -f "$FUNCTIONS" || { echo "::error::functions/index.js introuvable"; exit 1; }
+          test -f "$MAIN" || {
+            echo "::error::MainActivity.java introuvable."
+            exit 1
+          }
 
-          grep -Eq 'versionCode[[:space:]]+28([[:space:]]|$)' "$GRADLE"
+          test -f "$GRADLE" || {
+            echo "::error::app/build.gradle introuvable."
+            exit 1
+          }
+
+          test -f "$PROJECT_DIR/app/google-services.json" || {
+            echo "::error::google-services.json introuvable."
+            exit 1
+          }
+
+          test -f "$RULES" || {
+            echo "::error::firestore.rules introuvable."
+            exit 1
+          }
+
+          test -f "$SERVICE" || {
+            echo "::error::AppNotificationService.java introuvable."
+            exit 1
+          }
+
+          test -f "$FUNCTIONS" || {
+            echo "::error::functions/index.js introuvable."
+            exit 1
+          }
+
+          grep -Eq 'versionCode[[:space:]]+29([[:space:]]|$)' "$GRADLE" || {
+            echo "::error::Le code source n'est pas en version 29."
+            exit 1
+          }
 
           grep -Fq 'void contactPage()' "$MAIN"
           grep -Fq 'Écrire votre message ici' "$MAIN"
           grep -Fq 'openChatEntry()' "$MAIN"
-          grep -Fq 'openChatConversation(String conversationId,boolean admin)' "$MAIN"
+          grep -Fq 'openClientConversationWithDraft' "$MAIN"
           grep -Fq 'adminChatInbox()' "$MAIN"
           grep -Fq 'PhoneAuthProvider.verifyPhoneNumber(options)' "$MAIN"
 
@@ -115,9 +134,10 @@ jobs:
           grep -Fq 'match /yb_notification_tokens/' "$RULES"
 
           grep -Fq 'onDocumentCreated' "$FUNCTIONS"
+          grep -Fq 'notifyClientWhenAdminReplies' "$FUNCTIONS"
           node --check "$FUNCTIONS"
 
-          echo "Vérifications V28 réussies."
+          echo "Vérifications des fichiers V29 réussies."
 
       - name: Configure release signing
         shell: bash
@@ -134,7 +154,7 @@ jobs:
           if [ -z "${KEYSTORE_BASE64:-}" ] || \
              [ -z "${KEYSTORE_PASSWORD:-}" ] || \
              [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Secrets de signature manquants : KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD"
+            echo "::error::Secrets de signature manquants : KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
             exit 1
           fi
 
@@ -175,10 +195,10 @@ jobs:
 
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
-          test -s "$APK" || {
-            echo "::error::APK release introuvable."
+          if [ ! -s "$APK" ]; then
+            echo "::error::APK release introuvable après compilation."
             exit 1
-          }
+          fi
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify --verbose --print-certs "$APK"
@@ -187,24 +207,24 @@ jobs:
 
           echo "$BADGING" | head -n 3
 
-          echo "$BADGING" | grep -q "versionCode='28'" || {
-            echo "::error::Le versionCode de l'APK n'est pas 28."
+          echo "$BADGING" | grep -q "versionCode='29'" || {
+            echo "::error::La version de l'APK compilé n'est pas 29."
             exit 1
           }
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V29-CHAT-ENVOI-FIX.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V29-CHAT-ENVOI-FIX.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-      - name: Upload signed V28 APK artifact
+      - name: Upload signed V29 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS
+          name: YOUNGEST-BUSINESS-V29-CHAT-ENVOI-FIX
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
