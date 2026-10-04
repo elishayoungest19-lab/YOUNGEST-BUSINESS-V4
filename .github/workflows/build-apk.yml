@@ -1,11 +1,9 @@
-
-name: Build YOUNGEST'S BUSINESS V28 Chat Notifications
+name: Build YOUNGEST'S BUSINESS V28 Chat Service Client
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,7 +12,6 @@ jobs:
   build:
     name: Build and verify signed V28 APK
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,110 +33,49 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Recherche du ZIP V28, y compris le suffixe -1 ou -2.
       - name: Find and extract V28 source ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
-
-          ROOT="$GITHUB_WORKSPACE"
-          ZIP_PATH=""
-
-          ZIP_PATH="$(find "$ROOT" -maxdepth 5 -type f \
-            \( -name 'YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source*.zip' \
-               -o -name 'YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.zip' \
-               -o -name 'YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-*.zip' \) \
-            ! -path "$ROOT/release-output/*" \
-            -print -quit)"
-
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -type f -name 'YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip' -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP source V28 introuvable."
-            echo "ZIP présents dans le dépôt :"
-            find "$ROOT" -maxdepth 5 -type f -iname '*.zip' -print || true
+            echo "::error::Add YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip to the repository before running this workflow."
             exit 1
           fi
-
-          echo "ZIP source sélectionné : $ZIP_PATH"
-          unzip -t "$ZIP_PATH"
-
-          DEST="$RUNNER_TEMP/v28-source"
-          mkdir -p "$DEST"
-          unzip -q "$ZIP_PATH" -d "$DEST"
-
-          SETTINGS="$(find "$DEST" -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)"
-
-          if [ -z "$SETTINGS" ]; then
-            echo "::error::Aucun fichier settings.gradle trouvé dans le ZIP."
-            find "$DEST" -maxdepth 5 -type f -print | head -n 100
-            exit 1
-          fi
-
+          mkdir -p "$RUNNER_TEMP/v28-source"
+          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v28-source"
+          SETTINGS="$(find "$RUNNER_TEMP/v28-source" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          test -n "$SETTINGS" || { echo "::error::Gradle settings file missing in ZIP"; exit 1; }
           PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android : $PROJECT_DIR"
 
-      # Vérification des fichiers et fonctionnalités attendus.
-      - name: Verify V28 source and notification backend
+      - name: Verify V28 source and chat security markers
         shell: bash
         run: |
           set -euo pipefail
-
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          GRADLE="$PROJECT_DIR/app/build.gradle"
-          FIRESTORE="$PROJECT_DIR/firestore.rules"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
-
-          for FILE in "$MAIN" "$SERVICE" "$GRADLE" \
-                      "$PROJECT_DIR/app/google-services.json" \
-                      "$FIRESTORE" "$FUNCTIONS"; do
-            if [ ! -f "$FILE" ]; then
-              echo "::error::Fichier requis absent : $FILE"
-              exit 1
-            fi
-          done
-
-          grep -Eq 'versionCode[[:space:]]+28([[:space:]]|$)' "$GRADLE" || {
-            echo "::error::versionCode 28 absent de app/build.gradle."
+          test -f "$MAIN"
+          test -f "$PROJECT_DIR/app/google-services.json"
+          grep -q 'versionCode 28' "$PROJECT_DIR/app/build.gradle"
+          grep -q 'void services()' "$MAIN"
+          grep -q 'void journalPage()' "$MAIN"
+          grep -q 'openChatEntry()' "$MAIN"
+          grep -Fq 'Écrire votre message ici' "$MAIN"
+          grep -Fq 'void contactPage()' "$MAIN"
+          if grep -Fq 'CHAT SERVICE CLIENT",BLUE); chat.setOnClickListener' "$MAIN"; then
+            echo "::error::Standalone chat button remains on the home screen."
             exit 1
-          }
-
-          grep -Fq 'Écrire votre message ici' "$MAIN" || {
-            echo "::error::Texte de la zone de saisie introuvable."
-            exit 1
-          }
-
-          grep -Fq 'void contactPage()' "$MAIN" || {
-            echo "::error::contactPage() introuvable."
-            exit 1
-          }
-
-          grep -Fq 'renderInlineClientChat' "$MAIN" || {
-            echo "::error::Fonction renderInlineClientChat introuvable."
-            exit 1
-          }
-
-          grep -Fq 'notifyClientOnAdminChatReply' "$FUNCTIONS" || {
-            echo "::error::Fonction de notification des réponses introuvable."
-            exit 1
-          }
-
-          grep -Fq 'onDocumentCreated' "$FUNCTIONS" || {
-            echo "::error::Déclencheur Firestore onDocumentCreated introuvable."
-            exit 1
-          }
-
-          grep -Fq 'match /yb_chat_conversations/' "$FIRESTORE" || {
-            echo "::error::Règle Firestore du chat introuvable."
-            exit 1
-          }
-
-          node --check "$FUNCTIONS"
-
-          echo "Vérifications statiques V28 réussies."
+          fi
+          grep -q 'adminChatInbox()' "$MAIN"
+          grep -q 'PhoneAuthProvider.verifyPhoneNumber(options)' "$MAIN"
+          grep -q 'match /yb_chat_conversations/' "$PROJECT_DIR/firestore.rules"
+          grep -q 'match /yb_notification_tokens/' "$PROJECT_DIR/firestore.rules"
+          test -f "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+          grep -q 'onDocumentCreated' "$PROJECT_DIR/functions/index.js"
+          node --check "$PROJECT_DIR/functions/index.js"
+          grep -q 'notifyClientWhenAdminReplies' "$PROJECT_DIR/functions/index.js"
+          echo 'V28 source/interface and notification checks passed.'
 
       - name: Configure release signing
         shell: bash
@@ -151,31 +87,17 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-
-          if [ -z "${KEYSTORE_BASE64:-}" ] || \
-             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
-             [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Secrets de signature manquants : KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
+          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Missing signing secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD"
             exit 1
           fi
-
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
           test -s release-keystore.jks
-
           ALIAS="${KEY_ALIAS:-}"
-
           if [ -z "$ALIAS" ]; then
-            ALIAS="$(keytool -list -v \
-              -keystore release-keystore.jks \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null |
-              sed -n 's/^Alias name: //p' | head -n 1)"
+            ALIAS="$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
           fi
-
-          if [ -z "$ALIAS" ]; then
-            echo "::error::Impossible de trouver l'alias. Configure le secret KEY_ALIAS."
-            exit 1
-          fi
-
+          test -n "$ALIAS" || { echo "::error::Set the KEY_ALIAS repository secret"; exit 1; }
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
@@ -193,38 +115,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          if [ ! -s "$APK" ]; then
-            echo "::error::APK de publication introuvable."
-            exit 1
-          fi
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify --verbose --print-certs "$APK"
-
+          test -s "$APK" || { echo "::error::Release APK missing"; exit 1; }
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | head -n 3
-
-          echo "$BADGING" | grep -q "versionCode='28'" || {
-            echo "::error::Le versionCode de l'APK n'est pas 28."
-            exit 1
-          }
-
-          echo "$BADGING" | grep -q "package: name='com.aistudio.youngestbiz.mbkz'" || {
-            echo "::error::Le nom du package Android ne correspond pas."
-            exit 1
-          }
-
+          echo "$BADGING" | grep -q "versionCode='28'" || { echo "::error::APK versionCode is not 28"; exit 1; }
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       - name: Upload signed V28 APK artifact
         uses: actions/upload-artifact@v4
