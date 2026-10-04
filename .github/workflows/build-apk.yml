@@ -1,5 +1,5 @@
 
-name: Build YOUNGEST'S BUSINESS V26 Chat Service Client
+name: Build YOUNGEST'S BUSINESS V27 Chat Contactez-Nous
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V26 APK
+    name: Build and verify signed V27 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -36,7 +36,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find and extract V26 source ZIP
+      - name: Find and extract V27 source ZIP
         id: source
         shell: bash
         run: |
@@ -45,10 +45,9 @@ jobs:
           ROOT="$GITHUB_WORKSPACE"
           ZIP_PATH=""
 
-          # Prefer the exact name, then accept the GitHub -2 suffix.
           for NAME in \
-            "YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.zip" \
-            "YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT-2.zip"
+            "YOUNGEST-BUSINESS-V27-CHAT-CONTACTEZ-NOUS-source.zip" \
+            "YOUNGEST-BUSINESS-V27-CHAT-CONTACTEZ-NOUS.zip"
           do
             ZIP_PATH="$(find "$ROOT" -type f -name "$NAME" \
               ! -path "$ROOT/release-output/*" -print -quit)"
@@ -58,8 +57,8 @@ jobs:
           done
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::V26 ZIP not found. Expected the original filename or the -2.zip filename."
-            echo "ZIP files found in repository:"
+            echo "::error::V27 source ZIP not found."
+            echo "Upload the V27 source ZIP to the repository root."
             find "$ROOT" -type f -iname '*.zip' -print || true
             exit 1
           fi
@@ -67,7 +66,7 @@ jobs:
           echo "Using source ZIP: $ZIP_PATH"
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v26-source"
+          DEST="$RUNNER_TEMP/v27-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -77,16 +76,14 @@ jobs:
 
           if [ -z "$SETTINGS" ]; then
             echo "::error::No Gradle settings file found inside the ZIP."
-            find "$DEST" -maxdepth 4 -type f -print | head -n 100
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS")"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Project directory: $PROJECT_DIR"
 
-      - name: Verify V26 source and chat markers
+      - name: Verify V27 source and chat markers
         shell: bash
         run: |
           set -euo pipefail
@@ -96,27 +93,27 @@ jobs:
           FIRESTORE="$PROJECT_DIR/firestore.rules"
 
           test -f "$MAIN" || {
-            echo "::error::MainActivity.java not found at the expected path."
+            echo "::error::MainActivity.java missing."
             exit 1
           }
 
           test -f "$GRADLE" || {
-            echo "::error::app/build.gradle not found."
+            echo "::error::app/build.gradle missing."
             exit 1
           }
 
           test -f "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::app/google-services.json is missing."
+            echo "::error::app/google-services.json missing."
             exit 1
           }
 
           test -f "$FIRESTORE" || {
-            echo "::error::firestore.rules is missing."
+            echo "::error::firestore.rules missing."
             exit 1
           }
 
-          grep -Eq 'versionCode[[:space:]]+26([[:space:]]|$)' "$GRADLE" || {
-            echo "::error::versionCode 26 not found in app/build.gradle."
+          grep -Eq 'versionCode[[:space:]]+27([[:space:]]|$)' "$GRADLE" || {
+            echo "::error::versionCode 27 not found."
             exit 1
           }
 
@@ -125,20 +122,22 @@ jobs:
             'void journalPage()' \
             'openChatEntry()' \
             'adminChatInbox()' \
-            'PhoneAuthProvider.verifyPhoneNumber(options)'
+            'PhoneAuthProvider.verifyPhoneNumber(options)' \
+            'CONTACTEZ-NOUS' \
+            'RÉPONDRE AU CHAT'
           do
             if ! grep -Fq "$MARKER" "$MAIN"; then
-              echo "::error::Required source marker missing: $MARKER"
+              echo "::error::Required V27 source marker missing: $MARKER"
               exit 1
             fi
           done
 
           grep -Fq 'match /yb_chat_conversations/' "$FIRESTORE" || {
-            echo "::error::Chat conversation rule marker not found."
+            echo "::error::Chat Firestore rules missing."
             exit 1
           }
 
-          echo "V26 source and marker checks passed."
+          echo "V27 source checks passed."
 
       - name: Configure release signing
         shell: bash
@@ -154,7 +153,7 @@ jobs:
           if [ -z "${KEYSTORE_BASE64:-}" ] || \
              [ -z "${KEYSTORE_PASSWORD:-}" ] || \
              [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Missing signing secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
+            echo "::error::Missing signing secrets."
             exit 1
           fi
 
@@ -171,7 +170,7 @@ jobs:
           fi
 
           if [ -z "$ALIAS" ]; then
-            echo "::error::Could not determine the key alias. Set the KEY_ALIAS secret."
+            echo "::error::Could not determine key alias."
             exit 1
           fi
 
@@ -186,7 +185,6 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-
           gradle --no-daemon clean :app:assembleRelease
 
       - name: Verify APK signature and version
@@ -207,25 +205,24 @@ jobs:
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | head -n 3
 
-          echo "$BADGING" | grep -q "versionCode='26'" || {
-            echo "::error::APK versionCode is not 26."
+          echo "$BADGING" | grep -q "versionCode='27'" || {
+            echo "::error::APK versionCode is not 27."
             exit 1
           }
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V27-CHAT-CONTACTEZ-NOUS.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V27-CHAT-CONTACTEZ-NOUS.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-      - name: Upload signed V26 APK artifact
+      - name: Upload signed V27 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT
+          name: YOUNGEST-BUSINESS-V27-CHAT-CONTACTEZ-NOUS
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
-          
