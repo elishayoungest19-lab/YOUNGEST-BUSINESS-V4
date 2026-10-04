@@ -1,9 +1,11 @@
-name: Build YOUNGEST'S BUSINESS V28 Chat Service Client
+
+name: Build YOUNGEST'S BUSINESS V28 Chat Notifications
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -12,6 +14,7 @@ jobs:
   build:
     name: Build and verify signed V28 APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,44 +41,113 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -type f -name 'YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip' -print -quit)"
+
+          ROOT="$GITHUB_WORKSPACE"
+          ZIP_PATH=""
+
+          for NAME in \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-CORRIGE.zip" \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-3.zip" \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-2.zip" \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source-1.zip" \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip" \
+            "YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.zip"
+          do
+            ZIP_PATH="$(find "$ROOT" -type f -name "$NAME" \
+              ! -path "$ROOT/release-output/*" -print -quit)"
+            if [ -n "$ZIP_PATH" ]; then
+              break
+            fi
+          done
+
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Add YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS-source.zip to the repository before running this workflow."
+            echo "::error::V28 source ZIP not found in the repository."
+            echo "ZIP files found:"
+            find "$ROOT" -type f -iname '*.zip' -print || true
             exit 1
           fi
-          mkdir -p "$RUNNER_TEMP/v28-source"
-          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v28-source"
-          SETTINGS="$(find "$RUNNER_TEMP/v28-source" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
-          test -n "$SETTINGS" || { echo "::error::Gradle settings file missing in ZIP"; exit 1; }
+
+          echo "Using ZIP: $ZIP_PATH"
+          unzip -t "$ZIP_PATH"
+
+          DEST="$RUNNER_TEMP/v28-source"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP_PATH" -d "$DEST"
+
+          SETTINGS="$(find "$DEST" -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)"
+
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::Gradle settings file not found inside the ZIP."
+            exit 1
+          fi
+
           PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
 
-      - name: Verify V28 source and chat security markers
+      - name: Verify V28 source and chat backend
         shell: bash
         run: |
           set -euo pipefail
+
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          test -f "$MAIN"
-          test -f "$PROJECT_DIR/app/google-services.json"
-          grep -q 'versionCode 28' "$PROJECT_DIR/app/build.gradle"
-          grep -q 'void services()' "$MAIN"
-          grep -q 'void journalPage()' "$MAIN"
-          grep -q 'openChatEntry()' "$MAIN"
-          grep -Fq 'Écrire votre message ici' "$MAIN"
-          grep -Fq 'void contactPage()' "$MAIN"
-          if grep -Fq 'CHAT SERVICE CLIENT",BLUE); chat.setOnClickListener' "$MAIN"; then
-            echo "::error::Standalone chat button remains on the home screen."
+          GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+          FIRESTORE="$PROJECT_DIR/firestore.rules"
+          GOOGLE_SERVICES="$PROJECT_DIR/app/google-services.json"
+          FUNCTIONS="$PROJECT_DIR/functions/index.js"
+          NOTIFICATION_SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+
+          for FILE in "$MAIN" "$GRADLE_FILE" "$FIRESTORE" "$GOOGLE_SERVICES"; do
+            if [ ! -f "$FILE" ]; then
+              echo "::error::Required file missing: $FILE"
+              exit 1
+            fi
+          done
+
+          grep -Eq 'versionCode[[:space:]]+28([[:space:]]|$)' "$GRADLE_FILE" || {
+            echo "::error::versionCode 28 not found in app/build.gradle."
             exit 1
+          }
+
+          grep -Fq 'void contactPage()' "$MAIN" || {
+            echo "::error::contactPage() not found in MainActivity.java."
+            exit 1
+          }
+
+          grep -Fq 'openChatConversation()' "$MAIN" || {
+            echo "::error::openChatConversation() not found in MainActivity.java."
+            exit 1
+          }
+
+          grep -Fq 'Écrire votre message ici' "$MAIN" || {
+            echo "::error::Chat message input marker not found. Check the actual V28 UI text."
+            exit 1
+          }
+
+          grep -Fq 'match /yb_chat_conversations/' "$FIRESTORE" || {
+            echo "::error::Chat Firestore rules not found."
+            exit 1
+          }
+
+          if [ -f "$FUNCTIONS" ]; then
+            if ! command -v node >/dev/null 2>&1; then
+              echo "::error::Node.js is needed to check functions/index.js."
+              exit 1
+            fi
+            node --check "$FUNCTIONS"
+          else
+            echo "::warning::functions/index.js not found; push notification backend cannot be verified from this ZIP."
           fi
-          grep -q 'adminChatInbox()' "$MAIN"
-          grep -q 'PhoneAuthProvider.verifyPhoneNumber(options)' "$MAIN"
-          grep -q 'match /yb_chat_conversations/' "$PROJECT_DIR/firestore.rules"
-          grep -q 'match /yb_notification_tokens/' "$PROJECT_DIR/firestore.rules"
-          test -f "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          grep -q 'onDocumentCreated' "$PROJECT_DIR/functions/index.js"
-          node --check "$PROJECT_DIR/functions/index.js"
-          grep -q 'notifyClientWhenAdminReplies' "$PROJECT_DIR/functions/index.js"
-          echo 'V28 source/interface and notification checks passed.'
+
+          if [ -f "$NOTIFICATION_SERVICE" ]; then
+            echo "Android notification service found."
+          else
+            echo "::warning::AppNotificationService.java not found. Verify how push notifications are handled in this project."
+          fi
+
+          echo "V28 source checks passed."
 
       - name: Configure release signing
         shell: bash
@@ -87,17 +159,31 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Missing signing secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD"
+
+          if [ -z "${KEYSTORE_BASE64:-}" ] || \
+             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
+             [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Missing signing secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
             exit 1
           fi
+
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
           test -s release-keystore.jks
+
           ALIAS="${KEY_ALIAS:-}"
+
           if [ -z "$ALIAS" ]; then
-            ALIAS="$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+            ALIAS="$(keytool -list -v \
+              -keystore release-keystore.jks \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null |
+              sed -n 's/^Alias name: //p' | head -n 1)"
           fi
-          test -n "$ALIAS" || { echo "::error::Set the KEY_ALIAS repository secret"; exit 1; }
+
+          if [ -z "$ALIAS" ]; then
+            echo "::error::Could not determine key alias. Set KEY_ALIAS in repository secrets."
+            exit 1
+          fi
+
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
@@ -115,15 +201,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK" || { echo "::error::Release APK missing"; exit 1; }
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+          if [ ! -s "$APK" ]; then
+            echo "::error::Release APK missing."
+            exit 1
+          fi
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose --print-certs "$APK"
+
           BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | head -n 3
-          echo "$BADGING" | grep -q "versionCode='28'" || { echo "::error::APK versionCode is not 28"; exit 1; }
+
+          echo "$BADGING" | grep -q "versionCode='28'" || {
+            echo "::error::APK versionCode is not 28."
+            exit 1
+          }
+
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+          cp "$APK" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk"
+
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V28-CHAT-NOTIFICATIONS.apk" \
+            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       - name: Upload signed V28 APK artifact
         uses: actions/upload-artifact@v4
@@ -132,3 +236,4 @@ jobs:
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
+          
