@@ -1,20 +1,17 @@
-
-name: Build YOUNGEST'S BUSINESS V25 Reports and Transfers
+name: Build YOUNGEST'S BUSINESS V26 Chat Service Client
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Extract, build and verify V25 APK
+    name: Build and verify signed V26 APK
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,7 +25,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android components
+      - name: Install Android SDK packages
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.9
@@ -36,129 +33,60 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Select and extract V25 source ZIP
+      - name: Find and extract V26 source ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
-
-          ZIP_NAME='YOUNGEST-BUSINESS-V25-JOURNAL-PDF-DATE-CORRIGE.zip'
-          ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
-
-          echo "Expected source ZIP: $ZIP_NAME"
-
-          if [ ! -s "$ZIP_PATH" ]; then
-            echo "::error::V25 source ZIP is missing or empty: $ZIP_NAME"
-            echo "ZIP files found at repository root:"
-            find "$GITHUB_WORKSPACE" -maxdepth 1 -type f \
-              -iname '*.zip' -printf '%f\n'
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -type f -name 'YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.zip' -print -quit)"
+          if [ -z "$ZIP_PATH" ]; then
+            echo "::error::Add YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.zip to the repository before running this workflow."
             exit 1
           fi
+          mkdir -p "$RUNNER_TEMP/v26-source"
+          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v26-source"
+          SETTINGS="$(find "$RUNNER_TEMP/v26-source" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          test -n "$SETTINGS" || { echo "::error::Gradle settings file missing in ZIP"; exit 1; }
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          SOURCE_SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
-
-          echo "source_zip=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "source_sha256=$SOURCE_SHA256" >> "$GITHUB_OUTPUT"
-
-          unzip -tq "$ZIP_PATH"
-
-          mkdir -p "$RUNNER_TEMP/v25-source"
-          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/v25-source"
-
-          SETTINGS_PATH="$(find "$RUNNER_TEMP/v25-source" -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)"
-
-          if [ -z "$SETTINGS_PATH" ]; then
-            echo "::error::No settings.gradle found in the ZIP."
-            exit 1
-          fi
-
-          PROJECT_DIR="$(dirname "$SETTINGS_PATH")"
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Android project directory: $PROJECT_DIR"
-
-      - name: Verify source and Firebase configuration
+      - name: Verify V26 source and chat security markers
         shell: bash
-        env:
-          PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
         run: |
           set -euo pipefail
-
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          BUILD_FILE="$PROJECT_DIR/app/build.gradle"
+          test -f "$MAIN"
+          test -f "$PROJECT_DIR/app/google-services.json"
+          grep -q 'versionCode 26' "$PROJECT_DIR/app/build.gradle"
+          grep -q 'void services()' "$MAIN"
+          grep -q 'void journalPage()' "$MAIN"
+          grep -q 'openChatEntry()' "$MAIN"
+          grep -q 'adminChatInbox()' "$MAIN"
+          grep -q 'PhoneAuthProvider.verifyPhoneNumber(options)' "$MAIN"
+          grep -q 'match /yb_chat_conversations/' "$PROJECT_DIR/firestore.rules"
+          echo 'V26 source/interface checks passed.'
 
-          test -s "$MAIN" || {
-            echo "::error::MainActivity.java missing or empty."
-            exit 1
-          }
-
-          test -s "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json missing or empty."
-            exit 1
-          }
-
-          if [ ! -f "$BUILD_FILE" ]; then
-            BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
-          fi
-
-          test -f "$BUILD_FILE" || {
-            echo "::error::App Gradle build file not found."
-            exit 1
-          }
-
-          echo "=== Android version ==="
-          grep -nE 'versionCode|versionName' "$BUILD_FILE" || true
-
-          if ! grep -Eq 'versionCode[[:space:]]*=?[[:space:]]*25([^0-9]|$)' "$BUILD_FILE"; then
-            echo "::error::The source ZIP must declare versionCode 25."
-            exit 1
-          fi
-
-          echo "=== Journal/PDF source indicators ==="
-          grep -niE 'PdfDocument|journal|rapport|historique|CDF|USD|transfer|transfert' \
-            "$MAIN" || true
-
-          echo "Source checks passed."
-
-      - name: Prepare release signing
+      - name: Configure release signing
         shell: bash
         env:
-          PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
-
-          if [ -z "${KEYSTORE_BASE64:-}" ] || \
-             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
-             [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Missing release signing secrets."
-            echo "Required: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD."
+          cd "$PROJECT_DIR"
+          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Missing signing secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_PASSWORD"
             exit 1
           fi
-
-          echo "$KEYSTORE_BASE64" | base64 --decode \
-            > "$PROJECT_DIR/release-keystore.jks"
-
-          test -s "$PROJECT_DIR/release-keystore.jks"
-
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          test -s release-keystore.jks
           ALIAS="${KEY_ALIAS:-}"
-
           if [ -z "$ALIAS" ]; then
-            ALIAS="$(keytool -list -v \
-              -keystore "$PROJECT_DIR/release-keystore.jks" \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | sed -n 's/^Alias name: //p' | head -n 1 || true)"
+            ALIAS="$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
           fi
-
-          if [ -z "$ALIAS" ]; then
-            echo "::error::Signing alias not found. Configure KEY_ALIAS."
-            exit 1
-          fi
-
+          test -n "$ALIAS" || { echo "::error::Set the KEY_ALIAS repository secret"; exit 1; }
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
@@ -166,91 +94,30 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build release APK
-        working-directory: ${{ steps.source.outputs.project_dir }}
         shell: bash
         run: |
           set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon clean :app:assembleRelease
 
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            ./gradlew clean :app:assembleRelease --no-daemon
-          else
-            gradle clean :app:assembleRelease --no-daemon
-          fi
-
-      - name: Verify APK version and signature
-        id: verify
-        env:
-          PROJECT_DIR: ${{ steps.source.outputs.project_dir }}
-          SOURCE_ZIP: ${{ steps.source.outputs.source_zip }}
-          SOURCE_SHA256: ${{ steps.source.outputs.source_sha256 }}
+      - name: Verify APK signature and version
         shell: bash
         run: |
           set -euo pipefail
-
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          test -s "$APK" || {
-            echo "::error::Release APK not found."
-            exit 1
-          }
-
-          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-
-          "$APKSIGNER" verify --verbose "$APK"
-
-          BADGING="$("$AAPT" dump badging "$APK")"
+          test -s "$APK" || { echo "::error::Release APK missing"; exit 1; }
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           echo "$BADGING" | head -n 3
+          echo "$BADGING" | grep -q "versionCode='26'" || { echo "::error::APK versionCode is not 26"; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-          echo "$BADGING" | grep -q "versionCode='25'" || {
-            echo "::error::Built APK is not versionCode 25."
-            exit 1
-          }
-
-          mkdir -p "$GITHUB_WORKSPACE/release-apk"
-
-          APK_NAME="YOUNGEST-BUSINESS-V25-REPORTS-TRANSFERS-RELEASE.apk"
-          cp "$APK" "$GITHUB_WORKSPACE/release-apk/$APK_NAME"
-
-          APK_SHA256="$(sha256sum \
-            "$GITHUB_WORKSPACE/release-apk/$APK_NAME" | awk '{print $1}')"
-
-          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
-
-          sha256sum "$GITHUB_WORKSPACE/release-apk/$APK_NAME" \
-            | tee "$GITHUB_WORKSPACE/release-apk/SHA256SUMS.txt"
-
-          {
-            echo "Source ZIP: $SOURCE_ZIP"
-            echo "Source ZIP SHA-256: $SOURCE_SHA256"
-            echo "Source commit: $GITHUB_SHA"
-            echo "APK file: $APK_NAME"
-            echo "APK SHA-256: $APK_SHA256"
-            echo "APK versionCode: 25"
-            echo "APK signature verification: PASSED"
-          } > "$GITHUB_WORKSPACE/release-apk/BUILD-PROVENANCE.txt"
-
-      - name: Upload verified V25 APK artifact
+      - name: Upload signed V26 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V25-REPORTS-TRANSFERS-RELEASE
-          path: release-apk/*
+          name: YOUNGEST-BUSINESS-V26-CHAT-SERVICE-CLIENT
+          path: release-output/*
           if-no-files-found: error
           retention-days: 30
-
-      - name: Publish build summary
-        if: always()
-        env:
-          SOURCE_ZIP: ${{ steps.source.outputs.source_zip }}
-          SOURCE_SHA256: ${{ steps.source.outputs.source_sha256 }}
-          APK_SHA256: ${{ steps.verify.outputs.apk_sha256 }}
-        run: |
-          {
-            echo "## YOUNGEST'S BUSINESS V25 build"
-            echo ""
-            echo "- Source ZIP: ${SOURCE_ZIP:-not identified}"
-            echo "- Source ZIP SHA-256: ${SOURCE_SHA256:-not available}"
-            echo "- APK SHA-256: ${APK_SHA256:-not available}"
-            echo "- Commit: $GITHUB_SHA"
-          } >> "$GITHUB_STEP_SUMMARY"
