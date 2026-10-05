@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V31 Chat Session Fix
+name: Build YOUNGEST'S BUSINESS V32 Chat Delivery Fix
 
 on:
   workflow_dispatch:
@@ -11,19 +11,31 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V31 APK
+    name: Build and verify signed V32 APK
     runs-on: ubuntu-latest
 
     steps:
 
+      # =========================================================
+      # CHECKOUT
+      # =========================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # =========================================================
+      # JAVA 17
+      # =========================================================
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      # =========================================================
+      # ANDROID SDK
+      # =========================================================
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -34,16 +46,20 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+      # =========================================================
+      # GRADLE 8.9
+      # =========================================================
+
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE ET EXTRACTION DU SOURCE V31
+      # RECHERCHE ET EXTRACTION DU SOURCE V32
       # =========================================================
 
-      - name: Find and extract V31 source ZIP
+      - name: Find and extract V32 source ZIP
         shell: bash
         run: |
           set -euo pipefail
@@ -51,12 +67,14 @@ jobs:
           ROOT="$GITHUB_WORKSPACE"
           ZIP_PATH=""
 
-          echo "Recherche du ZIP source V31..."
+          echo "========================================="
+          echo "     RECHERCHE DU SOURCE V32"
+          echo "========================================="
 
           for ZIP_NAME in \
-            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source.zip" \
-            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source-1.zip" \
-            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source-2.zip"
+            "YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX-source.zip" \
+            "YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX-source-1.zip" \
+            "YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX-source-2.zip"
           do
             ZIP_PATH="$(find "$ROOT" \
               -maxdepth 5 \
@@ -65,14 +83,16 @@ jobs:
               -print -quit)"
 
             if [ -n "$ZIP_PATH" ]; then
-              echo "ZIP source V31 trouvé : $ZIP_PATH"
+              echo "ZIP source V32 trouvé :"
+              echo "$ZIP_PATH"
               break
             fi
           done
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP source V31 introuvable."
+            echo "::error::ZIP source V32 introuvable."
 
+            echo ""
             echo "Fichiers ZIP présents dans le dépôt :"
 
             find "$ROOT" \
@@ -85,17 +105,17 @@ jobs:
           fi
 
           echo ""
-          echo "Vérification de l'archive V31..."
+          echo "Vérification de l'archive V32..."
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v31-source"
+          DEST="$RUNNER_TEMP/v32-source"
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du projet V31..."
+          echo "Extraction du projet V32..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -111,7 +131,7 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le ZIP V31."
+            echo "::error::settings.gradle introuvable dans le ZIP V32."
             exit 1
           fi
 
@@ -120,14 +140,14 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
-          echo "Projet Android V31 détecté :"
+          echo "Projet Android V32 détecté :"
           echo "$PROJECT_DIR"
 
       # =========================================================
-      # VERIFICATION DU SOURCE V31
+      # VERIFICATION DU SOURCE V32
       # =========================================================
 
-      - name: Verify V31 source and chat components
+      - name: Verify V32 source and chat components
         shell: bash
         run: |
           set -euo pipefail
@@ -139,7 +159,7 @@ jobs:
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
           echo "========================================="
-          echo "        VERIFICATION SOURCE V31"
+          echo "        VERIFICATION SOURCE V32"
           echo "========================================="
 
           test -f "$MAIN" || {
@@ -175,21 +195,36 @@ jobs:
           echo "OK : fichiers principaux présents."
 
           # -----------------------------------------------------
-          # VERSION V31
+          # VERSION V32
           # -----------------------------------------------------
 
           grep -Eq \
-            'versionCode[[:space:]]+31([[:space:]]|$)' \
+            'versionCode[[:space:]]+32([[:space:]]|$)' \
             "$GRADLE" || {
 
-            echo "::error::Le code source n'est pas en version 31."
+            echo "::error::Le code source n'est pas en version 32."
 
             grep -n "versionCode" "$GRADLE" || true
 
             exit 1
           }
 
-          echo "OK : versionCode 31."
+          echo "OK : versionCode 32."
+
+          # -----------------------------------------------------
+          # VERSION NAME
+          # -----------------------------------------------------
+
+          grep -Fq \
+            "versionName '1.25.0'" \
+            "$GRADLE" || {
+
+            echo "::error::versionName 1.25.0 introuvable."
+            grep -n "versionName" "$GRADLE" || true
+            exit 1
+          }
+
+          echo "OK : versionName 1.25.0."
 
           # -----------------------------------------------------
           # APPLICATION ID
@@ -278,6 +313,20 @@ jobs:
           echo "OK : boîte Admin."
 
           # -----------------------------------------------------
+          # ADMIN EMAIL
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'elishayoungest19@gmail.com' \
+            "$MAIN" || {
+
+            echo "::error::Gmail Admin introuvable dans MainActivity."
+            exit 1
+          }
+
+          echo "OK : Gmail Admin."
+
+          # -----------------------------------------------------
           # FIREBASE MESSAGING
           # -----------------------------------------------------
 
@@ -347,11 +396,11 @@ jobs:
 
           echo ""
           echo "========================================="
-          echo "       V31 SOURCE CHECKS PASSED"
+          echo "       V32 SOURCE CHECKS PASSED"
           echo "========================================="
 
       # =========================================================
-      # CONFIGURATION DE LA SIGNATURE
+      # CONFIGURATION SIGNATURE
       # =========================================================
 
       - name: Configure release signing
@@ -373,7 +422,6 @@ jobs:
              [ -z "${KEY_PASSWORD:-}" ]; then
 
             echo "::error::Secrets de signature manquants."
-
             echo "::error::KEYSTORE_BASE64"
             echo "::error::KEYSTORE_PASSWORD"
             echo "::error::KEY_PASSWORD"
@@ -415,10 +463,10 @@ jobs:
           echo "OK : keystore Release configuré."
 
       # =========================================================
-      # COMPILATION V31
+      # COMPILATION V32
       # =========================================================
 
-      - name: Build release APK V31
+      - name: Build release APK V32
         shell: bash
         run: |
           set -euo pipefail
@@ -426,7 +474,7 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "========================================="
-          echo "   COMPILATION YOUNGEST'S BUSINESS V31"
+          echo "   COMPILATION YOUNGEST'S BUSINESS V32"
           echo "========================================="
 
           gradle \
@@ -435,10 +483,10 @@ jobs:
             :app:assembleRelease
 
           echo ""
-          echo "Compilation V31 terminée."
+          echo "Compilation V32 terminée."
 
       # =========================================================
-      # VERIFICATION APK V31
+      # VERIFICATION APK V32
       # =========================================================
 
       - name: Verify APK signature, package and version
@@ -488,19 +536,19 @@ jobs:
           }
 
           # -----------------------------------------------------
-          # VERSION CODE 31
+          # VERSION CODE 32
           # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
-            "versionCode='31'" || {
+            "versionCode='32'" || {
 
-            echo "::error::La version de l'APK compilé n'est pas 31."
+            echo "::error::La version de l'APK compilé n'est pas 32."
             exit 1
           }
 
           echo ""
           echo "OK : applicationId correct."
-          echo "OK : versionCode 31."
+          echo "OK : versionCode 32."
           echo "OK : signature APK valide."
 
           # -----------------------------------------------------
@@ -511,15 +559,15 @@ jobs:
             "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
           echo "========================================="
-          echo "          APK V31 PRET"
+          echo "          APK V32 PRET"
           echo "========================================="
 
           ls -lh \
@@ -532,14 +580,14 @@ jobs:
             "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       # =========================================================
-      # UPLOAD ARTIFACT V31
+      # UPLOAD ARTIFACT V32
       # =========================================================
 
-      - name: Upload signed V31 APK artifact
+      - name: Upload signed V32 APK artifact
         uses: actions/upload-artifact@v4
 
         with:
-          name: YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX
+          name: YOUNGEST-BUSINESS-V32-CHAT-DELIVERY-FIX
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
