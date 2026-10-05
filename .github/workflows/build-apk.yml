@@ -71,25 +71,31 @@ jobs:
           echo "     RECHERCHE DU SOURCE V33"
           echo "========================================="
 
-          for ZIP_NAME in \
-            "YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source.zip" \
-            "YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source-1.zip" \
-            "YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source-2.zip"
-          do
-            ZIP_PATH="$(find "$ROOT" \
+          # Recherche tous les noms possibles :
+          # source.zip
+          # source-1.zip
+          # source-2.zip
+          # ...
+          # source-10.zip
+          # ...
+          ZIP_PATH="$(
+            find "$ROOT" \
               -maxdepth 5 \
               -type f \
-              -name "$ZIP_NAME" \
-              -print -quit)"
+              -name 'YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source*.zip' \
+              -print \
+              | sort \
+              | head -n 1
+          )"
 
-            if [ -n "$ZIP_PATH" ]; then
-              echo "ZIP source V33 trouvé :"
-              echo "$ZIP_PATH"
-              break
-            fi
-          done
+          if [ -n "$ZIP_PATH" ]; then
+            echo ""
+            echo "ZIP source V33 trouvé :"
+            echo "$ZIP_PATH"
+          fi
 
           if [ -z "$ZIP_PATH" ]; then
+            echo ""
             echo "::error::ZIP source V33 introuvable."
 
             echo ""
@@ -104,10 +110,18 @@ jobs:
             exit 1
           fi
 
+          # -------------------------------------------------------
+          # VERIFICATION DE L'ARCHIVE
+          # -------------------------------------------------------
+
           echo ""
           echo "Vérification de l'archive V33..."
 
           unzip -t "$ZIP_PATH"
+
+          # -------------------------------------------------------
+          # EXTRACTION
+          # -------------------------------------------------------
 
           DEST="$RUNNER_TEMP/v33-source"
 
@@ -118,6 +132,10 @@ jobs:
           echo "Extraction du projet V33..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
+
+          # -------------------------------------------------------
+          # RECHERCHE DU PROJET ANDROID
+          # -------------------------------------------------------
 
           SETTINGS="$(
             find "$DEST" \
@@ -162,6 +180,10 @@ jobs:
           echo "        VERIFICATION SOURCE V33"
           echo "========================================="
 
+          # -------------------------------------------------------
+          # FICHIERS PRINCIPAUX
+          # -------------------------------------------------------
+
           test -f "$MAIN" || {
             echo "::error::MainActivity.java introuvable."
             exit 1
@@ -194,9 +216,9 @@ jobs:
 
           echo "OK : fichiers principaux présents."
 
-          # -----------------------------------------------------
-          # VERSION V33
-          # -----------------------------------------------------
+          # =======================================================
+          # VERSION CODE 33
+          # =======================================================
 
           grep -Eq \
             'versionCode[[:space:]]+33([[:space:]]|$)' \
@@ -211,9 +233,9 @@ jobs:
 
           echo "OK : versionCode 33."
 
-          # -----------------------------------------------------
-          # VERSION NAME
-          # -----------------------------------------------------
+          # =======================================================
+          # VERSION NAME 1.26.0
+          # =======================================================
 
           grep -Fq \
             "versionName '1.26.0'" \
@@ -228,9 +250,9 @@ jobs:
 
           echo "OK : versionName 1.26.0."
 
-          # -----------------------------------------------------
+          # =======================================================
           # APPLICATION ID
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             "applicationId 'com.aistudio.youngestbiz.mbkz'" \
@@ -242,9 +264,9 @@ jobs:
 
           echo "OK : applicationId correct."
 
-          # -----------------------------------------------------
+          # =======================================================
           # CHAT CLIENT
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'void contactPage()' \
@@ -272,9 +294,9 @@ jobs:
 
           echo "OK : parcours Chat client."
 
-          # -----------------------------------------------------
+          # =======================================================
           # PERSISTANCE DU BROUILLON
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'SharedPreferences' \
@@ -294,9 +316,9 @@ jobs:
 
           echo "OK : persistance du brouillon Chat."
 
-          # -----------------------------------------------------
+          # =======================================================
           # TRANSACTION FIRESTORE
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'firestore.runTransaction' \
@@ -308,9 +330,9 @@ jobs:
 
           echo "OK : transaction Firestore."
 
-          # -----------------------------------------------------
-          # SESSION FIREBASE ADMIN
-          # -----------------------------------------------------
+          # =======================================================
+          # FIREBASE AUTH
+          # =======================================================
 
           grep -Fq \
             'firebaseAuth.signOut()' \
@@ -322,9 +344,9 @@ jobs:
 
           echo "OK : déconnexion Firebase."
 
-          # -----------------------------------------------------
+          # =======================================================
           # PHONE AUTH
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'PhoneAuthProvider.verifyPhoneNumber(options)' \
@@ -336,9 +358,9 @@ jobs:
 
           echo "OK : Firebase Phone Authentication."
 
-          # -----------------------------------------------------
+          # =======================================================
           # ADMIN CHAT
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'adminChatInbox()' \
@@ -350,9 +372,9 @@ jobs:
 
           echo "OK : boîte Admin."
 
-          # -----------------------------------------------------
+          # =======================================================
           # ADMIN EMAIL
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'elishayoungest19@gmail.com' \
@@ -364,9 +386,9 @@ jobs:
 
           echo "OK : Gmail Admin."
 
-          # -----------------------------------------------------
+          # =======================================================
           # FIREBASE MESSAGING
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'FirebaseMessagingService' \
@@ -386,9 +408,9 @@ jobs:
 
           echo "OK : Firebase Messaging."
 
-          # -----------------------------------------------------
+          # =======================================================
           # FIRESTORE CHAT
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'match /yb_chat_conversations/' \
@@ -408,9 +430,9 @@ jobs:
 
           echo "OK : règles Firestore Chat."
 
-          # -----------------------------------------------------
+          # =======================================================
           # CLOUD FUNCTIONS
-          # -----------------------------------------------------
+          # =======================================================
 
           grep -Fq \
             'onDocumentCreated' \
@@ -460,6 +482,11 @@ jobs:
              [ -z "${KEY_PASSWORD:-}" ]; then
 
             echo "::error::Secrets de signature manquants."
+
+            echo "::error::KEYSTORE_BASE64"
+            echo "::error::KEYSTORE_PASSWORD"
+            echo "::error::KEY_PASSWORD"
+
             exit 1
           fi
 
@@ -471,6 +498,7 @@ jobs:
           ALIAS="${KEY_ALIAS:-}"
 
           if [ -z "$ALIAS" ]; then
+
             ALIAS="$(
               keytool -list -v \
                 -keystore release-keystore.jks \
@@ -478,7 +506,8 @@ jobs:
                 2>/dev/null \
                 | sed -n 's/^Alias name: //p' \
                 | head -n 1
-            )"
+            )
+
           fi
 
           if [ -z "$ALIAS" ]; then
@@ -543,6 +572,11 @@ jobs:
             --print-certs \
             "$APK"
 
+          echo ""
+          echo "========================================="
+          echo "       VERIFICATION IDENTITE APK"
+          echo "========================================="
+
           BADGING="$(
             "$ANDROID_HOME/build-tools/35.0.0/aapt" \
               dump badging \
@@ -551,12 +585,20 @@ jobs:
 
           echo "$BADGING" | head -n 5
 
+          # =====================================================
+          # APPLICATION ID
+          # =====================================================
+
           echo "$BADGING" | grep -q \
             "package: name='com.aistudio.youngestbiz.mbkz'" || {
 
             echo "::error::ApplicationId de l'APK incorrect."
             exit 1
           }
+
+          # =====================================================
+          # VERSION CODE 33
+          # =====================================================
 
           echo "$BADGING" | grep -q \
             "versionCode='33'" || {
@@ -570,9 +612,9 @@ jobs:
           echo "OK : versionCode 33."
           echo "OK : signature APK valide."
 
-          # -----------------------------------------------------
-          # ARTIFACT
-          # -----------------------------------------------------
+          # =====================================================
+          # PREPARATION ARTIFACT
+          # =====================================================
 
           mkdir -p \
             "$GITHUB_WORKSPACE/release-output"
