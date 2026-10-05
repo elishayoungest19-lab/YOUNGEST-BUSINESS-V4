@@ -102,7 +102,7 @@ jobs:
           echo "$ZIP_PATH"
 
           # -----------------------------------------------------
-          # VERIFICATION DE L'ARCHIVE
+          # VERIFICATION ARCHIVE
           # -----------------------------------------------------
 
           echo ""
@@ -473,7 +473,7 @@ jobs:
           cd "$PROJECT_DIR"
 
           # -----------------------------------------------------
-          # VERIFICATION DES SECRETS PRINCIPAUX
+          # VERIFICATION DES SECRETS
           # -----------------------------------------------------
 
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
@@ -508,7 +508,7 @@ jobs:
           echo "OK : keystore Release créé."
 
           # -----------------------------------------------------
-          # DETECTION DE L'ALIAS
+          # DETECTION / UTILISATION DE L'ALIAS
           # -----------------------------------------------------
 
           ALIAS="${KEY_ALIAS:-}"
@@ -523,17 +523,38 @@ jobs:
             echo "KEY_ALIAS non fourni."
             echo "Détection automatique de l'alias du keystore..."
 
+            KEYTOOL_OUTPUT="$RUNNER_TEMP/keytool-output.txt"
+
+            rm -f "$KEYTOOL_OUTPUT"
+
+            if ! keytool \
+              -list \
+              -keystore release-keystore.jks \
+              -storepass "$KEYSTORE_PASSWORD" \
+              > "$KEYTOOL_OUTPUT" 2>&1
+            then
+
+              echo "::error::keytool n'a pas pu lire le keystore."
+
+              echo ""
+              echo "Sortie de keytool :"
+
+              cat "$KEYTOOL_OUTPUT" || true
+
+              exit 1
+            fi
+
+            echo ""
+            echo "Keystore lu avec succès."
+
             ALIAS="$(
-              keytool \
-                -list \
-                -keystore release-keystore.jks \
-                -storepass "$KEYSTORE_PASSWORD" \
-                2>/dev/null \
-                | grep '^Alias name:' \
-                | head -n 1 \
-                | cut -d ':' -f 2- \
-                | xargs
+              sed -n \
+                's/^Alias name:[[:space:]]*//p' \
+                "$KEYTOOL_OUTPUT" \
+                | head -n 1
             )"
+
+            ALIAS="$(printf '%s' "$ALIAS" | xargs)"
 
           fi
 
@@ -542,23 +563,40 @@ jobs:
           # -----------------------------------------------------
 
           if [ -z "$ALIAS" ]; then
+
             echo "::error::Impossible de détecter l'alias du keystore."
-            echo "::error::Vérifie le mot de passe du keystore."
+
+            echo ""
+            echo "Sortie complète de keytool :"
+
+            if [ -f "$RUNNER_TEMP/keytool-output.txt" ]; then
+              cat "$RUNNER_TEMP/keytool-output.txt"
+            fi
+
+            echo ""
+            echo "::error::Le keystore ne contient aucun alias détectable."
+
             exit 1
           fi
 
-          echo "Alias Release détecté avec succès."
+          echo "OK : alias Release détecté."
 
-          keytool \
+          # -----------------------------------------------------
+          # VERIFICATION DE L'ALIAS
+          # -----------------------------------------------------
+
+          if ! keytool \
             -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
             -alias "$ALIAS" \
-            >/dev/null 2>&1 || {
+            >/dev/null 2>&1
+          then
 
             echo "::error::L'alias détecté ne correspond pas au keystore."
+
             exit 1
-          }
+          fi
 
           echo "OK : alias Release vérifié."
 
@@ -690,4 +728,26 @@ jobs:
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
-    
+          echo "========================================="
+          echo "          APK V33 PRET"
+          echo "========================================="
+
+          ls -lh "$GITHUB_WORKSPACE/release-output/"
+
+          echo ""
+          echo "SHA256 :"
+
+          cat \
+            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+      # =========================================================
+      # UPLOAD ARTIFACT V33
+      # =========================================================
+
+      - name: Upload signed V33 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 30
