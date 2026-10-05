@@ -508,7 +508,7 @@ jobs:
           echo "OK : keystore Release créé."
 
           # -----------------------------------------------------
-          # DETECTION / UTILISATION DE L'ALIAS
+          # DETECTION DE L'ALIAS
           # -----------------------------------------------------
 
           ALIAS="${KEY_ALIAS:-}"
@@ -527,8 +527,15 @@ jobs:
 
             rm -f "$KEYTOOL_OUTPUT"
 
+            # -------------------------------------------------
+            # IMPORTANT :
+            # -list simple ne montre pas Alias name.
+            # -list -v le montre.
+            # -------------------------------------------------
+
             if ! keytool \
               -list \
+              -v \
               -keystore release-keystore.jks \
               -storepass "$KEYSTORE_PASSWORD" \
               > "$KEYTOOL_OUTPUT" 2>&1
@@ -547,9 +554,13 @@ jobs:
             echo ""
             echo "Keystore lu avec succès."
 
+            # -------------------------------------------------
+            # EXTRACTION DE Alias name:
+            # -------------------------------------------------
+
             ALIAS="$(
               sed -n \
-                's/^Alias name:[[:space:]]*//p' \
+                's/^[[:space:]]*Alias name:[[:space:]]*//p' \
                 "$KEYTOOL_OUTPUT" \
                 | head -n 1
             )"
@@ -573,16 +584,13 @@ jobs:
               cat "$RUNNER_TEMP/keytool-output.txt"
             fi
 
-            echo ""
-            echo "::error::Le keystore ne contient aucun alias détectable."
-
             exit 1
           fi
 
           echo "OK : alias Release détecté."
 
           # -----------------------------------------------------
-          # VERIFICATION DE L'ALIAS
+          # VERIFICATION FINALE DE L'ALIAS
           # -----------------------------------------------------
 
           if ! keytool \
