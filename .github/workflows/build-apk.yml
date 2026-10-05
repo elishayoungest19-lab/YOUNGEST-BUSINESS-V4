@@ -78,14 +78,8 @@ jobs:
               -name 'YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source*.zip' \
               -print \
               | sort \
-              | head -n 1
+              | tail -n 1
           )"
-
-          if [ -n "$ZIP_PATH" ]; then
-            echo ""
-            echo "ZIP source V33 trouvé :"
-            echo "$ZIP_PATH"
-          fi
 
           if [ -z "$ZIP_PATH" ]; then
             echo ""
@@ -104,9 +98,21 @@ jobs:
           fi
 
           echo ""
+          echo "ZIP source V33 trouvé :"
+          echo "$ZIP_PATH"
+
+          # -----------------------------------------------------
+          # VERIFICATION ARCHIVE
+          # -----------------------------------------------------
+
+          echo ""
           echo "Vérification de l'archive V33..."
 
           unzip -t "$ZIP_PATH"
+
+          # -----------------------------------------------------
+          # EXTRACTION
+          # -----------------------------------------------------
 
           DEST="$RUNNER_TEMP/v33-source"
 
@@ -117,6 +123,10 @@ jobs:
           echo "Extraction du projet V33..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
+
+          # -----------------------------------------------------
+          # DETECTION DU PROJET ANDROID
+          # -----------------------------------------------------
 
           SETTINGS="$(
             find "$DEST" \
@@ -161,6 +171,10 @@ jobs:
           echo "========================================="
           echo "        VERIFICATION SOURCE V33"
           echo "========================================="
+
+          # -----------------------------------------------------
+          # FICHIERS PRINCIPAUX
+          # -----------------------------------------------------
 
           test -f "$MAIN" || {
             echo "::error::MainActivity.java introuvable."
@@ -212,7 +226,7 @@ jobs:
           echo "OK : versionCode 33."
 
           # -----------------------------------------------------
-          # VERSION NAME 1.26.0
+          # VERSION NAME
           # -----------------------------------------------------
 
           grep -Fq \
@@ -477,14 +491,19 @@ jobs:
             exit 1
           fi
 
-          echo "OK : secrets principaux présents."
+          if [ -z "${KEY_ALIAS:-}" ]; then
+            echo "::error::Secret KEY_ALIAS manquant."
+            echo "::error::Ajoute KEY_ALIAS dans GitHub Secrets."
+            exit 1
+          fi
+
+          echo "OK : secrets de signature présents."
 
           # -----------------------------------------------------
           # CREATION DU KEYSTORE
           # -----------------------------------------------------
 
-          printf '%s' "$KEYSTORE_BASE64" | \
-            base64 --decode > release-keystore.jks
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
 
           if [ ! -s release-keystore.jks ]; then
             echo "::error::Le keystore n'a pas pu être créé."
@@ -494,47 +513,21 @@ jobs:
           echo "OK : keystore Release créé."
 
           # -----------------------------------------------------
-          # RECUPERATION DE L'ALIAS
+          # VERIFICATION DE L'ALIAS
           # -----------------------------------------------------
 
-          ALIAS="${KEY_ALIAS:-}"
+          keytool \
+            -list \
+            -keystore release-keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            >/dev/null 2>&1 || {
 
-          if [ -n "$ALIAS" ]; then
-
-            echo "OK : KEY_ALIAS fourni par GitHub."
-
-          else
-
-            echo "KEY_ALIAS non fourni."
-            echo "Recherche automatique de l'alias..."
-
-            ALIAS="$(
-              keytool \
-                -list \
-                -keystore release-keystore.jks \
-                -storepass "$KEYSTORE_PASSWORD" \
-                2>/dev/null \
-                | awk -F',' 'NR==1 {
-                    gsub(/^[ \t]+|[ \t]+$/, "", $1);
-                    print $1
-                  }'
-            )
-
-          fi
-
-          # -----------------------------------------------------
-          # VERIFICATION ALIAS
-          # -----------------------------------------------------
-
-          if [ -z "$ALIAS" ]; then
-
-            echo "::error::Impossible de déterminer l'alias du keystore."
-            echo "::error::Ajoute le secret KEY_ALIAS dans GitHub."
-
+            echo "::error::KEY_ALIAS ne correspond pas au keystore."
             exit 1
-          fi
+          }
 
-          echo "OK : alias Release détecté."
+          echo "OK : alias Release vérifié."
 
           # -----------------------------------------------------
           # VARIABLES POUR GRADLE
@@ -542,7 +535,7 @@ jobs:
 
           echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
 
           echo ""
           echo "========================================="
@@ -650,12 +643,11 @@ jobs:
           echo "OK : versionName 1.26.0."
           echo "OK : signature APK valide."
 
-          # =====================================================
+          # -----------------------------------------------------
           # PREPARATION ARTIFACT
-          # =====================================================
+          # -----------------------------------------------------
 
-          mkdir -p \
-            "$GITHUB_WORKSPACE/release-output"
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
             "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY.apk"
@@ -669,8 +661,7 @@ jobs:
           echo "          APK V33 PRET"
           echo "========================================="
 
-          ls -lh \
-            "$GITHUB_WORKSPACE/release-output/"
+          ls -lh "$GITHUB_WORKSPACE/release-output/"
 
           echo ""
           echo "SHA256 :"
