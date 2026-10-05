@@ -102,7 +102,7 @@ jobs:
           echo "$ZIP_PATH"
 
           # -----------------------------------------------------
-          # VERIFICATION ARCHIVE
+          # VERIFICATION DE L'ARCHIVE
           # -----------------------------------------------------
 
           echo ""
@@ -473,7 +473,7 @@ jobs:
           cd "$PROJECT_DIR"
 
           # -----------------------------------------------------
-          # VERIFICATION DES SECRETS
+          # VERIFICATION DES SECRETS PRINCIPAUX
           # -----------------------------------------------------
 
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
@@ -491,19 +491,14 @@ jobs:
             exit 1
           fi
 
-          if [ -z "${KEY_ALIAS:-}" ]; then
-            echo "::error::Secret KEY_ALIAS manquant."
-            echo "::error::Ajoute KEY_ALIAS dans GitHub Secrets."
-            exit 1
-          fi
-
-          echo "OK : secrets de signature présents."
+          echo "OK : secrets principaux présents."
 
           # -----------------------------------------------------
           # CREATION DU KEYSTORE
           # -----------------------------------------------------
 
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          printf '%s' "$KEYSTORE_BASE64" | \
+            base64 --decode > release-keystore.jks
 
           if [ ! -s release-keystore.jks ]; then
             echo "::error::Le keystore n'a pas pu être créé."
@@ -513,17 +508,55 @@ jobs:
           echo "OK : keystore Release créé."
 
           # -----------------------------------------------------
+          # DETECTION DE L'ALIAS
+          # -----------------------------------------------------
+
+          ALIAS="${KEY_ALIAS:-}"
+
+          if [ -n "$ALIAS" ]; then
+
+            echo "KEY_ALIAS fourni par GitHub."
+            echo "Vérification de l'alias..."
+
+          else
+
+            echo "KEY_ALIAS non fourni."
+            echo "Détection automatique de l'alias du keystore..."
+
+            ALIAS="$(
+              keytool \
+                -list \
+                -keystore release-keystore.jks \
+                -storepass "$KEYSTORE_PASSWORD" \
+                2>/dev/null \
+                | grep '^Alias name:' \
+                | head -n 1 \
+                | cut -d ':' -f 2- \
+                | xargs
+            )"
+
+          fi
+
+          # -----------------------------------------------------
           # VERIFICATION DE L'ALIAS
           # -----------------------------------------------------
+
+          if [ -z "$ALIAS" ]; then
+            echo "::error::Impossible de détecter l'alias du keystore."
+            echo "::error::Vérifie le mot de passe du keystore."
+            exit 1
+          fi
+
+          echo "Alias Release détecté avec succès."
 
           keytool \
             -list \
             -keystore release-keystore.jks \
             -storepass "$KEYSTORE_PASSWORD" \
-            -alias "$KEY_ALIAS" \
+            -alias "$ALIAS" \
             >/dev/null 2>&1 || {
 
-            echo "::error::KEY_ALIAS ne correspond pas au keystore."
+            echo "::error::L'alias détecté ne correspond pas au keystore."
             exit 1
           }
 
@@ -535,7 +568,7 @@ jobs:
 
           echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
           echo ""
           echo "========================================="
@@ -627,7 +660,7 @@ jobs:
           }
 
           # -----------------------------------------------------
-          # VERSION NAME 1.26.0
+          # VERSION NAME
           # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
@@ -657,26 +690,4 @@ jobs:
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
-          echo "========================================="
-          echo "          APK V33 PRET"
-          echo "========================================="
-
-          ls -lh "$GITHUB_WORKSPACE/release-output/"
-
-          echo ""
-          echo "SHA256 :"
-
-          cat \
-            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-      # =========================================================
-      # UPLOAD ARTIFACT V33
-      # =========================================================
-
-      - name: Upload signed V33 APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY
-          path: release-output/*
-          if-no-files-found: error
-          retention-days: 30
+    
