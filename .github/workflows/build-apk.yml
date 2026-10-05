@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V33 Chat Persistent Delivery
+name: Build YOUNGEST'S BUSINESS V34 Chat Persistent Delivery
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V33 APK
+    name: Build and verify signed V34 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -56,10 +56,10 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE ET EXTRACTION DU SOURCE V33
+      # RECHERCHE ET EXTRACTION DU SOURCE V34
       # =========================================================
 
-      - name: Find and extract V33 source ZIP
+      - name: Find and extract V34 source ZIP
         shell: bash
         run: |
           set -euo pipefail
@@ -68,14 +68,14 @@ jobs:
           ZIP_PATH=""
 
           echo "========================================="
-          echo "     RECHERCHE DU SOURCE V33"
+          echo "     RECHERCHE DU SOURCE V34"
           echo "========================================="
 
           ZIP_PATH="$(
             find "$ROOT" \
               -maxdepth 5 \
               -type f \
-              -name 'YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source*.zip' \
+              -iname 'YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY-source*.zip' \
               -print \
               | sort \
               | tail -n 1
@@ -83,7 +83,7 @@ jobs:
 
           if [ -z "$ZIP_PATH" ]; then
             echo ""
-            echo "::error::ZIP source V33 introuvable."
+            echo "::error::ZIP source V34 introuvable."
 
             echo ""
             echo "Fichiers ZIP présents dans le dépôt :"
@@ -98,15 +98,15 @@ jobs:
           fi
 
           echo ""
-          echo "ZIP source V33 trouvé :"
+          echo "ZIP source V34 trouvé :"
           echo "$ZIP_PATH"
 
           # -----------------------------------------------------
-          # VERIFICATION ARCHIVE
+          # VERIFICATION DE L'ARCHIVE
           # -----------------------------------------------------
 
           echo ""
-          echo "Vérification de l'archive V33..."
+          echo "Vérification de l'archive V34..."
 
           unzip -t "$ZIP_PATH"
 
@@ -114,13 +114,13 @@ jobs:
           # EXTRACTION
           # -----------------------------------------------------
 
-          DEST="$RUNNER_TEMP/v33-source"
+          DEST="$RUNNER_TEMP/v34-source"
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du projet V33..."
+          echo "Extraction du projet V34..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -141,7 +141,7 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le ZIP V33."
+            echo "::error::settings.gradle introuvable dans le ZIP V34."
             exit 1
           fi
 
@@ -150,14 +150,14 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
-          echo "Projet Android V33 détecté :"
+          echo "Projet Android V34 détecté :"
           echo "$PROJECT_DIR"
 
       # =========================================================
-      # VERIFICATION DU SOURCE V33
+      # VERIFICATION DU SOURCE V34
       # =========================================================
 
-      - name: Verify V33 source and chat components
+      - name: Verify V34 source and chat components
         shell: bash
         run: |
           set -euo pipefail
@@ -169,7 +169,7 @@ jobs:
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
           echo "========================================="
-          echo "        VERIFICATION SOURCE V33"
+          echo "        VERIFICATION SOURCE V34"
           echo "========================================="
 
           # -----------------------------------------------------
@@ -209,38 +209,38 @@ jobs:
           echo "OK : fichiers principaux présents."
 
           # -----------------------------------------------------
-          # VERSION CODE 33
+          # VERSION CODE 34
           # -----------------------------------------------------
 
           grep -Eq \
-            'versionCode[[:space:]]+33([[:space:]]|$)' \
+            'versionCode[[:space:]]+34([[:space:]]|$)' \
             "$GRADLE" || {
 
-            echo "::error::Le code source n'est pas en version 33."
+            echo "::error::Le code source n'est pas en version 34."
 
             grep -n "versionCode" "$GRADLE" || true
 
             exit 1
           }
 
-          echo "OK : versionCode 33."
+          echo "OK : versionCode 34."
 
           # -----------------------------------------------------
           # VERSION NAME
           # -----------------------------------------------------
 
           grep -Fq \
-            "versionName '1.26.0'" \
+            "versionName '1.27.0'" \
             "$GRADLE" || {
 
-            echo "::error::versionName 1.26.0 introuvable."
+            echo "::error::versionName 1.27.0 introuvable."
 
             grep -n "versionName" "$GRADLE" || true
 
             exit 1
           }
 
-          echo "OK : versionName 1.26.0."
+          echo "OK : versionName 1.27.0."
 
           # -----------------------------------------------------
           # APPLICATION ID
@@ -448,7 +448,7 @@ jobs:
 
           echo ""
           echo "========================================="
-          echo "       V33 SOURCE CHECKS PASSED"
+          echo "       V34 SOURCE CHECKS PASSED"
           echo "========================================="
 
       # =========================================================
@@ -467,7 +467,7 @@ jobs:
           set -euo pipefail
 
           echo "========================================="
-          echo "      CONFIGURATION SIGNATURE V33"
+          echo "      CONFIGURATION SIGNATURE V34"
           echo "========================================="
 
           cd "$PROJECT_DIR"
@@ -523,49 +523,90 @@ jobs:
             echo "KEY_ALIAS non fourni."
             echo "Détection automatique de l'alias du keystore..."
 
-            KEYTOOL_OUTPUT="$RUNNER_TEMP/keytool-output.txt"
+            KEYTOOL_VERBOSE="$RUNNER_TEMP/keytool-verbose.txt"
+            KEYTOOL_SIMPLE="$RUNNER_TEMP/keytool-simple.txt"
 
-            rm -f "$KEYTOOL_OUTPUT"
+            rm -f \
+              "$KEYTOOL_VERBOSE" \
+              "$KEYTOOL_SIMPLE"
 
             # -------------------------------------------------
-            # IMPORTANT :
-            # -list simple ne montre pas Alias name.
-            # -list -v le montre.
+            # PREMIERE METHODE : keytool -list -v
             # -------------------------------------------------
 
-            if ! keytool \
+            keytool \
               -list \
               -v \
               -keystore release-keystore.jks \
               -storepass "$KEYSTORE_PASSWORD" \
-              > "$KEYTOOL_OUTPUT" 2>&1
-            then
-
-              echo "::error::keytool n'a pas pu lire le keystore."
-
-              echo ""
-              echo "Sortie de keytool :"
-
-              cat "$KEYTOOL_OUTPUT" || true
-
-              exit 1
-            fi
-
-            echo ""
-            echo "Keystore lu avec succès."
-
-            # -------------------------------------------------
-            # EXTRACTION DE Alias name:
-            # -------------------------------------------------
+              > "$KEYTOOL_VERBOSE" 2>&1 || true
 
             ALIAS="$(
               sed -n \
                 's/^[[:space:]]*Alias name:[[:space:]]*//p' \
-                "$KEYTOOL_OUTPUT" \
+                "$KEYTOOL_VERBOSE" \
                 | head -n 1
             )"
 
-            ALIAS="$(printf '%s' "$ALIAS" | xargs)"
+            ALIAS="$(printf '%s' "$ALIAS" | xargs || true)"
+
+            # -------------------------------------------------
+            # DEUXIEME METHODE :
+            # keytool -list simple
+            #
+            # Cette méthode corrige le problème observé
+            # lorsque Alias name n'apparaît pas dans la sortie.
+            # -------------------------------------------------
+
+            if [ -z "$ALIAS" ]; then
+
+              echo "Alias non trouvé avec la sortie détaillée."
+              echo "Tentative avec la sortie simple de keytool..."
+
+              if keytool \
+                -list \
+                -keystore release-keystore.jks \
+                -storepass "$KEYSTORE_PASSWORD" \
+                > "$KEYTOOL_SIMPLE" 2>&1
+              then
+
+                ALIAS="$(
+                  awk -F',' '
+                    /PrivateKeyEntry|SecretKeyEntry/ {
+                      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1)
+                      print $1
+                      exit
+                    }
+                  ' "$KEYTOOL_SIMPLE"
+                )"
+
+                ALIAS="$(printf '%s' "$ALIAS" | xargs || true)"
+
+              fi
+
+            fi
+
+            # -------------------------------------------------
+            # TROISIEME METHODE :
+            # rechercher une ligne d'entrée du keystore
+            # -----------------------------------------------------
+
+            if [ -z "$ALIAS" ]; then
+
+              echo "Alias toujours introuvable."
+              echo "Recherche avancée dans la sortie keytool..."
+
+              ALIAS="$(
+                grep \
+                  -E \
+                  ',[[:space:]]*(PrivateKeyEntry|SecretKeyEntry)[[:space:]]*$' \
+                  "$KEYTOOL_SIMPLE" \
+                  | head -n 1 \
+                  | cut -d',' -f1 \
+                  | xargs || true
+              )
+
+            fi
 
           fi
 
@@ -578,16 +619,24 @@ jobs:
             echo "::error::Impossible de détecter l'alias du keystore."
 
             echo ""
-            echo "Sortie complète de keytool :"
+            echo "===== SORTIE KEYTOOL DETAILLEE ====="
 
-            if [ -f "$RUNNER_TEMP/keytool-output.txt" ]; then
-              cat "$RUNNER_TEMP/keytool-output.txt"
-            fi
+            cat "$KEYTOOL_VERBOSE" || true
+
+            echo ""
+            echo "===== SORTIE KEYTOOL SIMPLE ====="
+
+            cat "$KEYTOOL_SIMPLE" || true
+
+            echo ""
+            echo "::error::Le keystore contient probablement un alias,"
+            echo "::error::mais celui-ci n'a pas pu être détecté automatiquement."
 
             exit 1
           fi
 
           echo "OK : alias Release détecté."
+          echo "Alias détecté : $ALIAS"
 
           # -----------------------------------------------------
           # VERIFICATION FINALE DE L'ALIAS
@@ -612,20 +661,22 @@ jobs:
           # VARIABLES POUR GRADLE
           # -----------------------------------------------------
 
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$ALIAS"
+          } >> "$GITHUB_ENV"
 
           echo ""
           echo "========================================="
-          echo "   SIGNATURE V33 CONFIGUREE AVEC SUCCES"
+          echo "   SIGNATURE V34 CONFIGUREE AVEC SUCCES"
           echo "========================================="
 
       # =========================================================
-      # COMPILATION V33
+      # COMPILATION V34
       # =========================================================
 
-      - name: Build release APK V33
+      - name: Build release APK V34
         shell: bash
         run: |
           set -euo pipefail
@@ -633,7 +684,7 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "========================================="
-          echo "   COMPILATION YOUNGEST'S BUSINESS V33"
+          echo "   COMPILATION YOUNGEST'S BUSINESS V34"
           echo "========================================="
 
           gradle \
@@ -642,10 +693,10 @@ jobs:
             :app:assembleRelease
 
           echo ""
-          echo "Compilation V33 terminée."
+          echo "Compilation V34 terminée."
 
       # =========================================================
-      # VERIFICATION APK V33
+      # VERIFICATION APK V34
       # =========================================================
 
       - name: Verify APK signature, package and version
@@ -695,13 +746,13 @@ jobs:
           }
 
           # -----------------------------------------------------
-          # VERSION CODE 33
+          # VERSION CODE 34
           # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
-            "versionCode='33'" || {
+            "versionCode='34'" || {
 
-            echo "::error::La version de l'APK compilé n'est pas 33."
+            echo "::error::La version de l'APK compilé n'est pas 34."
             exit 1
           }
 
@@ -710,37 +761,41 @@ jobs:
           # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
-            "versionName='1.26.0'" || {
+            "versionName='1.27.0'" || {
 
-            echo "::error::La versionName de l'APK compilé n'est pas 1.26.0."
+            echo "::error::La versionName de l'APK compilé n'est pas 1.27.0."
             exit 1
           }
 
           echo ""
           echo "OK : applicationId correct."
-          echo "OK : versionCode 33."
-          echo "OK : versionName 1.26.0."
+          echo "OK : versionCode 34."
+          echo "OK : versionName 1.27.0."
           echo "OK : signature APK valide."
 
           # -----------------------------------------------------
-          # PREPARATION ARTIFACT
+          # CREATION ARTIFACT
           # -----------------------------------------------------
 
-          mkdir -p "$GITHUB_WORKSPACE/release-output"
+          mkdir -p \
+            "$GITHUB_WORKSPACE/release-output"
 
-          cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY.apk"
+          cp \
+            "$APK" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY.apk" \
+            > \
+            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
           echo "========================================="
-          echo "          APK V33 PRET"
+          echo "          APK V34 PRET"
           echo "========================================="
 
-          ls -lh "$GITHUB_WORKSPACE/release-output/"
+          ls -lh \
+            "$GITHUB_WORKSPACE/release-output/"
 
           echo ""
           echo "SHA256 :"
@@ -749,13 +804,14 @@ jobs:
             "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       # =========================================================
-      # UPLOAD ARTIFACT V33
+      # UPLOAD ARTIFACT V34
       # =========================================================
 
-      - name: Upload signed V33 APK artifact
+      - name: Upload signed V34 APK artifact
         uses: actions/upload-artifact@v4
+
         with:
-          name: YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY
+          name: YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
