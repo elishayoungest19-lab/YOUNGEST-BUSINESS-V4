@@ -71,13 +71,6 @@ jobs:
           echo "     RECHERCHE DU SOURCE V33"
           echo "========================================="
 
-          # Recherche tous les noms possibles :
-          # source.zip
-          # source-1.zip
-          # source-2.zip
-          # ...
-          # source-10.zip
-          # ...
           ZIP_PATH="$(
             find "$ROOT" \
               -maxdepth 5 \
@@ -110,18 +103,10 @@ jobs:
             exit 1
           fi
 
-          # -------------------------------------------------------
-          # VERIFICATION DE L'ARCHIVE
-          # -------------------------------------------------------
-
           echo ""
           echo "Vérification de l'archive V33..."
 
           unzip -t "$ZIP_PATH"
-
-          # -------------------------------------------------------
-          # EXTRACTION
-          # -------------------------------------------------------
 
           DEST="$RUNNER_TEMP/v33-source"
 
@@ -133,10 +118,6 @@ jobs:
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          # -------------------------------------------------------
-          # RECHERCHE DU PROJET ANDROID
-          # -------------------------------------------------------
-
           SETTINGS="$(
             find "$DEST" \
               -type f \
@@ -145,7 +126,8 @@ jobs:
                 -o \
                 -name settings.gradle.kts \
               \) \
-              -print -quit
+              -print \
+              -quit
           )"
 
           if [ -z "$SETTINGS" ]; then
@@ -180,10 +162,6 @@ jobs:
           echo "        VERIFICATION SOURCE V33"
           echo "========================================="
 
-          # -------------------------------------------------------
-          # FICHIERS PRINCIPAUX
-          # -------------------------------------------------------
-
           test -f "$MAIN" || {
             echo "::error::MainActivity.java introuvable."
             exit 1
@@ -216,9 +194,9 @@ jobs:
 
           echo "OK : fichiers principaux présents."
 
-          # =======================================================
+          # -----------------------------------------------------
           # VERSION CODE 33
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Eq \
             'versionCode[[:space:]]+33([[:space:]]|$)' \
@@ -233,9 +211,9 @@ jobs:
 
           echo "OK : versionCode 33."
 
-          # =======================================================
+          # -----------------------------------------------------
           # VERSION NAME 1.26.0
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             "versionName '1.26.0'" \
@@ -250,9 +228,9 @@ jobs:
 
           echo "OK : versionName 1.26.0."
 
-          # =======================================================
+          # -----------------------------------------------------
           # APPLICATION ID
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             "applicationId 'com.aistudio.youngestbiz.mbkz'" \
@@ -264,9 +242,9 @@ jobs:
 
           echo "OK : applicationId correct."
 
-          # =======================================================
+          # -----------------------------------------------------
           # CHAT CLIENT
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'void contactPage()' \
@@ -294,9 +272,9 @@ jobs:
 
           echo "OK : parcours Chat client."
 
-          # =======================================================
+          # -----------------------------------------------------
           # PERSISTANCE DU BROUILLON
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'SharedPreferences' \
@@ -310,15 +288,15 @@ jobs:
             'KEY_PENDING_CHAT_DRAFT' \
             "$MAIN" || {
 
-            echo "::error::Persistance du brouillon Chat introuvable."
+            echo "::error::KEY_PENDING_CHAT_DRAFT introuvable."
             exit 1
           }
 
           echo "OK : persistance du brouillon Chat."
 
-          # =======================================================
+          # -----------------------------------------------------
           # TRANSACTION FIRESTORE
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'firestore.runTransaction' \
@@ -330,9 +308,9 @@ jobs:
 
           echo "OK : transaction Firestore."
 
-          # =======================================================
+          # -----------------------------------------------------
           # FIREBASE AUTH
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'firebaseAuth.signOut()' \
@@ -344,9 +322,9 @@ jobs:
 
           echo "OK : déconnexion Firebase."
 
-          # =======================================================
+          # -----------------------------------------------------
           # PHONE AUTH
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'PhoneAuthProvider.verifyPhoneNumber(options)' \
@@ -358,9 +336,9 @@ jobs:
 
           echo "OK : Firebase Phone Authentication."
 
-          # =======================================================
+          # -----------------------------------------------------
           # ADMIN CHAT
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'adminChatInbox()' \
@@ -372,9 +350,9 @@ jobs:
 
           echo "OK : boîte Admin."
 
-          # =======================================================
+          # -----------------------------------------------------
           # ADMIN EMAIL
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'elishayoungest19@gmail.com' \
@@ -386,9 +364,9 @@ jobs:
 
           echo "OK : Gmail Admin."
 
-          # =======================================================
+          # -----------------------------------------------------
           # FIREBASE MESSAGING
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'FirebaseMessagingService' \
@@ -408,9 +386,9 @@ jobs:
 
           echo "OK : Firebase Messaging."
 
-          # =======================================================
+          # -----------------------------------------------------
           # FIRESTORE CHAT
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'match /yb_chat_conversations/' \
@@ -430,9 +408,9 @@ jobs:
 
           echo "OK : règles Firestore Chat."
 
-          # =======================================================
+          # -----------------------------------------------------
           # CLOUD FUNCTIONS
-          # =======================================================
+          # -----------------------------------------------------
 
           grep -Fq \
             'onDocumentCreated' \
@@ -460,12 +438,11 @@ jobs:
           echo "========================================="
 
       # =========================================================
-      # CONFIGURATION SIGNATURE
+      # CONFIGURATION DE LA SIGNATURE
       # =========================================================
 
       - name: Configure release signing
         shell: bash
-
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -475,53 +452,102 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "========================================="
+          echo "      CONFIGURATION SIGNATURE V33"
+          echo "========================================="
+
           cd "$PROJECT_DIR"
 
-          if [ -z "${KEYSTORE_BASE64:-}" ] || \
-             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
-             [ -z "${KEY_PASSWORD:-}" ]; then
+          # -----------------------------------------------------
+          # VERIFICATION DES SECRETS
+          # -----------------------------------------------------
 
-            echo "::error::Secrets de signature manquants."
-
-            echo "::error::KEYSTORE_BASE64"
-            echo "::error::KEYSTORE_PASSWORD"
-            echo "::error::KEY_PASSWORD"
-
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 manquant."
             exit 1
           fi
+
+          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+            echo "::error::Secret KEYSTORE_PASSWORD manquant."
+            exit 1
+          fi
+
+          if [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Secret KEY_PASSWORD manquant."
+            exit 1
+          fi
+
+          echo "OK : secrets principaux présents."
+
+          # -----------------------------------------------------
+          # CREATION DU KEYSTORE
+          # -----------------------------------------------------
 
           printf '%s' "$KEYSTORE_BASE64" | \
             base64 --decode > release-keystore.jks
 
-          test -s release-keystore.jks
+          if [ ! -s release-keystore.jks ]; then
+            echo "::error::Le keystore n'a pas pu être créé."
+            exit 1
+          fi
+
+          echo "OK : keystore Release créé."
+
+          # -----------------------------------------------------
+          # RECUPERATION DE L'ALIAS
+          # -----------------------------------------------------
 
           ALIAS="${KEY_ALIAS:-}"
 
-          if [ -z "$ALIAS" ]; then
+          if [ -n "$ALIAS" ]; then
+
+            echo "OK : KEY_ALIAS fourni par GitHub."
+
+          else
+
+            echo "KEY_ALIAS non fourni."
+            echo "Recherche automatique de l'alias..."
 
             ALIAS="$(
-              keytool -list -v \
+              keytool \
+                -list \
                 -keystore release-keystore.jks \
                 -storepass "$KEYSTORE_PASSWORD" \
                 2>/dev/null \
-                | sed -n 's/^Alias name: //p' \
-                | head -n 1
+                | awk -F',' 'NR==1 {
+                    gsub(/^[ \t]+|[ \t]+$/, "", $1);
+                    print $1
+                  }'
             )
 
           fi
 
+          # -----------------------------------------------------
+          # VERIFICATION ALIAS
+          # -----------------------------------------------------
+
           if [ -z "$ALIAS" ]; then
-            echo "::error::Configure le secret KEY_ALIAS dans GitHub."
+
+            echo "::error::Impossible de déterminer l'alias du keystore."
+            echo "::error::Ajoute le secret KEY_ALIAS dans GitHub."
+
             exit 1
           fi
 
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$ALIAS"
-          } >> "$GITHUB_ENV"
+          echo "OK : alias Release détecté."
 
-          echo "OK : keystore Release configuré."
+          # -----------------------------------------------------
+          # VARIABLES POUR GRADLE
+          # -----------------------------------------------------
+
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+
+          echo ""
+          echo "========================================="
+          echo "   SIGNATURE V33 CONFIGUREE AVEC SUCCES"
+          echo "========================================="
 
       # =========================================================
       # COMPILATION V33
@@ -585,9 +611,9 @@ jobs:
 
           echo "$BADGING" | head -n 5
 
-          # =====================================================
+          # -----------------------------------------------------
           # APPLICATION ID
-          # =====================================================
+          # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
             "package: name='com.aistudio.youngestbiz.mbkz'" || {
@@ -596,9 +622,9 @@ jobs:
             exit 1
           }
 
-          # =====================================================
+          # -----------------------------------------------------
           # VERSION CODE 33
-          # =====================================================
+          # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
             "versionCode='33'" || {
@@ -607,9 +633,21 @@ jobs:
             exit 1
           }
 
+          # -----------------------------------------------------
+          # VERSION NAME 1.26.0
+          # -----------------------------------------------------
+
+          echo "$BADGING" | grep -q \
+            "versionName='1.26.0'" || {
+
+            echo "::error::La versionName de l'APK compilé n'est pas 1.26.0."
+            exit 1
+          }
+
           echo ""
           echo "OK : applicationId correct."
           echo "OK : versionCode 33."
+          echo "OK : versionName 1.26.0."
           echo "OK : signature APK valide."
 
           # =====================================================
@@ -646,7 +684,6 @@ jobs:
 
       - name: Upload signed V33 APK artifact
         uses: actions/upload-artifact@v4
-
         with:
           name: YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY
           path: release-output/*
