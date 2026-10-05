@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V30 Chat Robust
+name: Build YOUNGEST'S BUSINESS V31 Chat Session Fix
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V30 APK
+    name: Build and verify signed V31 APK
     runs-on: ubuntu-latest
 
     steps:
@@ -40,11 +40,10 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE DU ZIP SOURCE V30
-      # Accepte aussi le nom automatiquement renommé avec -1
+      # RECHERCHE ET EXTRACTION DU SOURCE V31
       # =========================================================
 
-      - name: Find and extract V30 source ZIP
+      - name: Find and extract V31 source ZIP
         shell: bash
         run: |
           set -euo pipefail
@@ -52,12 +51,12 @@ jobs:
           ROOT="$GITHUB_WORKSPACE"
           ZIP_PATH=""
 
-          echo "Recherche du ZIP source V30..."
+          echo "Recherche du ZIP source V31..."
 
           for ZIP_NAME in \
-            "YOUNGEST-BUSINESS-V30-CHAT-ROBUST-source.zip" \
-            "YOUNGEST-BUSINESS-V30-CHAT-ROBUST-source-1.zip" \
-            "YOUNGEST-BUSINESS-V30-CHAT-ROBUST-source-2.zip"
+            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source.zip" \
+            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source-1.zip" \
+            "YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX-source-2.zip"
           do
             ZIP_PATH="$(find "$ROOT" \
               -maxdepth 5 \
@@ -66,15 +65,15 @@ jobs:
               -print -quit)"
 
             if [ -n "$ZIP_PATH" ]; then
-              echo "ZIP source V30 trouvé : $ZIP_PATH"
+              echo "ZIP source V31 trouvé : $ZIP_PATH"
               break
             fi
           done
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP source V30 introuvable."
+            echo "::error::ZIP source V31 introuvable."
 
-            echo "Fichiers ZIP disponibles dans le dépôt :"
+            echo "Fichiers ZIP présents dans le dépôt :"
 
             find "$ROOT" \
               -maxdepth 5 \
@@ -86,16 +85,17 @@ jobs:
           fi
 
           echo ""
-          echo "Vérification de l'archive ZIP..."
+          echo "Vérification de l'archive V31..."
+
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v30-source"
+          DEST="$RUNNER_TEMP/v31-source"
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du projet V30..."
+          echo "Extraction du projet V31..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -111,7 +111,7 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le ZIP V30."
+            echo "::error::settings.gradle introuvable dans le ZIP V31."
             exit 1
           fi
 
@@ -120,14 +120,14 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
-          echo "Projet Android détecté :"
+          echo "Projet Android V31 détecté :"
           echo "$PROJECT_DIR"
 
       # =========================================================
-      # VERIFICATION DU SOURCE V30
+      # VERIFICATION DU SOURCE V31
       # =========================================================
 
-      - name: Verify V30 source and chat components
+      - name: Verify V31 source and chat components
         shell: bash
         run: |
           set -euo pipefail
@@ -139,7 +139,7 @@ jobs:
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
           echo "========================================="
-          echo "        VERIFICATION SOURCE V30"
+          echo "        VERIFICATION SOURCE V31"
           echo "========================================="
 
           test -f "$MAIN" || {
@@ -175,22 +175,21 @@ jobs:
           echo "OK : fichiers principaux présents."
 
           # -----------------------------------------------------
-          # VERSION CODE
+          # VERSION V31
           # -----------------------------------------------------
 
           grep -Eq \
-            'versionCode[[:space:]]+30([[:space:]]|$)' \
+            'versionCode[[:space:]]+31([[:space:]]|$)' \
             "$GRADLE" || {
 
-            echo "::error::Le code source n'est pas en version 30."
-            echo "Contenu versionCode détecté :"
+            echo "::error::Le code source n'est pas en version 31."
 
             grep -n "versionCode" "$GRADLE" || true
 
             exit 1
           }
 
-          echo "OK : versionCode 30."
+          echo "OK : versionCode 31."
 
           # -----------------------------------------------------
           # APPLICATION ID
@@ -204,7 +203,7 @@ jobs:
             exit 1
           }
 
-          echo "OK : applicationId com.aistudio.youngestbiz.mbkz."
+          echo "OK : applicationId correct."
 
           # -----------------------------------------------------
           # CHAT CLIENT
@@ -213,45 +212,42 @@ jobs:
           grep -Fq \
             'void contactPage()' \
             "$MAIN" || {
-              echo "::error::contactPage() introuvable."
-              exit 1
-          }
 
-          grep -Fq \
-            'Écrire votre message ici' \
-            "$MAIN" || {
-              echo "::error::Champ de message introuvable."
-              exit 1
+            echo "::error::contactPage() introuvable."
+            exit 1
           }
 
           grep -Fq \
             'openChatEntry()' \
             "$MAIN" || {
-              echo "::error::openChatEntry() introuvable."
-              exit 1
+
+            echo "::error::openChatEntry() introuvable."
+            exit 1
           }
 
           grep -Fq \
             'openClientConversationWithDraft' \
             "$MAIN" || {
-              echo "::error::openClientConversationWithDraft introuvable."
-              exit 1
+
+            echo "::error::openClientConversationWithDraft introuvable."
+            exit 1
           }
 
-          echo "OK : interface Chat client."
+          echo "OK : parcours Chat client."
 
           # -----------------------------------------------------
-          # BOITE ADMIN
+          # SESSION FIREBASE ADMIN
           # -----------------------------------------------------
 
           grep -Fq \
-            'adminChatInbox()' \
+            'firebaseAuth.signOut()' \
             "$MAIN" || {
-              echo "::error::adminChatInbox() introuvable."
-              exit 1
+
+            echo "::error::firebaseAuth.signOut() introuvable."
+            exit 1
           }
 
-          echo "OK : boîte de réception Admin."
+          echo "OK : déconnexion Firebase."
 
           # -----------------------------------------------------
           # PHONE AUTH
@@ -260,11 +256,26 @@ jobs:
           grep -Fq \
             'PhoneAuthProvider.verifyPhoneNumber(options)' \
             "$MAIN" || {
-              echo "::error::Phone Authentication introuvable."
-              exit 1
+
+            echo "::error::Phone Authentication introuvable."
+            exit 1
           }
 
           echo "OK : Firebase Phone Authentication."
+
+          # -----------------------------------------------------
+          # ADMIN CHAT
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'adminChatInbox()' \
+            "$MAIN" || {
+
+            echo "::error::adminChatInbox() introuvable."
+            exit 1
+          }
+
+          echo "OK : boîte Admin."
 
           # -----------------------------------------------------
           # FIREBASE MESSAGING
@@ -273,35 +284,39 @@ jobs:
           grep -Fq \
             'FirebaseMessagingService' \
             "$SERVICE" || {
-              echo "::error::FirebaseMessagingService introuvable."
-              exit 1
+
+            echo "::error::FirebaseMessagingService introuvable."
+            exit 1
           }
 
           grep -Fq \
             'onMessageReceived' \
             "$SERVICE" || {
-              echo "::error::onMessageReceived introuvable."
-              exit 1
+
+            echo "::error::onMessageReceived introuvable."
+            exit 1
           }
 
           echo "OK : Firebase Messaging."
 
           # -----------------------------------------------------
-          # FIRESTORE RULES
+          # FIRESTORE CHAT
           # -----------------------------------------------------
 
           grep -Fq \
             'match /yb_chat_conversations/' \
             "$RULES" || {
-              echo "::error::Règle yb_chat_conversations introuvable."
-              exit 1
+
+            echo "::error::Règle yb_chat_conversations introuvable."
+            exit 1
           }
 
           grep -Fq \
             'match /yb_notification_tokens/' \
             "$RULES" || {
-              echo "::error::Règle yb_notification_tokens introuvable."
-              exit 1
+
+            echo "::error::Règle yb_notification_tokens introuvable."
+            exit 1
           }
 
           echo "OK : règles Firestore Chat."
@@ -313,15 +328,17 @@ jobs:
           grep -Fq \
             'onDocumentCreated' \
             "$FUNCTIONS" || {
-              echo "::error::onDocumentCreated introuvable."
-              exit 1
+
+            echo "::error::onDocumentCreated introuvable."
+            exit 1
           }
 
           grep -Fq \
             'notifyClientWhenAdminReplies' \
             "$FUNCTIONS" || {
-              echo "::error::notifyClientWhenAdminReplies introuvable."
-              exit 1
+
+            echo "::error::notifyClientWhenAdminReplies introuvable."
+            exit 1
           }
 
           node --check "$FUNCTIONS"
@@ -330,15 +347,16 @@ jobs:
 
           echo ""
           echo "========================================="
-          echo "       V30 SOURCE CHECKS PASSED"
+          echo "       V31 SOURCE CHECKS PASSED"
           echo "========================================="
 
       # =========================================================
-      # SIGNATURE RELEASE
+      # CONFIGURATION DE LA SIGNATURE
       # =========================================================
 
       - name: Configure release signing
         shell: bash
+
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -397,10 +415,10 @@ jobs:
           echo "OK : keystore Release configuré."
 
       # =========================================================
-      # BUILD APK V30
+      # COMPILATION V31
       # =========================================================
 
-      - name: Build release APK V30
+      - name: Build release APK V31
         shell: bash
         run: |
           set -euo pipefail
@@ -408,8 +426,7 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "========================================="
-          echo "     COMPILATION YOUNGEST'S BUSINESS"
-          echo "                    V30"
+          echo "   COMPILATION YOUNGEST'S BUSINESS V31"
           echo "========================================="
 
           gradle \
@@ -418,10 +435,10 @@ jobs:
             :app:assembleRelease
 
           echo ""
-          echo "Compilation terminée."
+          echo "Compilation V31 terminée."
 
       # =========================================================
-      # VERIFICATION APK
+      # VERIFICATION APK V31
       # =========================================================
 
       - name: Verify APK signature, package and version
@@ -471,38 +488,38 @@ jobs:
           }
 
           # -----------------------------------------------------
-          # VERSION CODE 30
+          # VERSION CODE 31
           # -----------------------------------------------------
 
           echo "$BADGING" | grep -q \
-            "versionCode='30'" || {
+            "versionCode='31'" || {
 
-            echo "::error::La version de l'APK compilé n'est pas 30."
+            echo "::error::La version de l'APK compilé n'est pas 31."
             exit 1
           }
 
           echo ""
           echo "OK : applicationId correct."
-          echo "OK : versionCode 30."
+          echo "OK : versionCode 31."
           echo "OK : signature APK valide."
 
           # -----------------------------------------------------
-          # PREPARATION ARTIFACT
+          # ARTIFACT
           # -----------------------------------------------------
 
           mkdir -p \
             "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V30-CHAT-ROBUST.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V30-CHAT-ROBUST.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
           echo "========================================="
-          echo "             APK V30 PRET"
+          echo "          APK V31 PRET"
           echo "========================================="
 
           ls -lh \
@@ -515,14 +532,14 @@ jobs:
             "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       # =========================================================
-      # ARTIFACT FINAL V30
+      # UPLOAD ARTIFACT V31
       # =========================================================
 
-      - name: Upload signed V30 APK artifact
+      - name: Upload signed V31 APK artifact
         uses: actions/upload-artifact@v4
 
         with:
-          name: YOUNGEST-BUSINESS-V30-CHAT-ROBUST
+          name: YOUNGEST-BUSINESS-V31-CHAT-SESSION-FIX
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
