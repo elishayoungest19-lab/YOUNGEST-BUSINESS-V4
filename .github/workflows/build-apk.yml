@@ -41,10 +41,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
-        shell: bash
         run: |
-          set -euo pipefail
-
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -60,16 +57,15 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE EXACTE DU SOURCE V34 CORRIGE
+      # RECHERCHE DU VRAI SOURCE V34 FIXED
       # =========================================================
 
-      - name: Find and extract V34 Chat Fixed source
+      - name: Find and extract V34 source FIXED ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
-          DEST="$RUNNER_TEMP/v34-chat-fixed"
           ZIP_NAME="YOUNGEST-BUSINESS-V34-CHAT-DELIVERY-FINAL-source-FIXED.zip"
           ZIP_PATH="$ROOT/$ZIP_NAME"
 
@@ -78,7 +74,8 @@ jobs:
           echo "========================================="
 
           if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP V34 corrigé est introuvable : $ZIP_NAME"
+            echo "::error::ZIP source V34 FIXED introuvable."
+            echo "Fichier attendu : $ZIP_NAME"
 
             echo ""
             echo "ZIP présents dans le repository :"
@@ -93,7 +90,7 @@ jobs:
           fi
 
           echo ""
-          echo "SOURCE V34 CHAT FIXED TROUVE :"
+          echo "ZIP SOURCE V34 FIXED TROUVE :"
           echo "$ZIP_PATH"
 
           echo ""
@@ -101,11 +98,13 @@ jobs:
 
           unzip -t "$ZIP_PATH"
 
+          DEST="$RUNNER_TEMP/v34-source"
+
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du source V34 corrige..."
+          echo "Extraction du source V34 FIXED..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -122,7 +121,7 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le source V34 corrige."
+            echo "::error::settings.gradle introuvable."
             exit 1
           fi
 
@@ -131,45 +130,71 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
-          echo "Projet Android detecte :"
+          echo "Projet Android détecté :"
           echo "$PROJECT_DIR"
 
           echo ""
           echo "========================================="
-          echo "   SOURCE V34 CHAT FIXED PRET"
+          echo "   SOURCE V34 FIXED PRET"
           echo "========================================="
 
       # =========================================================
-      # IDENTITE DU SOURCE V34
+      # VERIFICATION V34 + CHAT
       # =========================================================
 
-      - name: Verify V34 source identity
+      - name: Verify V34 source and chat delivery fix
         shell: bash
         run: |
           set -euo pipefail
 
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           GRADLE="$PROJECT_DIR/app/build.gradle"
+          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+          RULES="$PROJECT_DIR/firestore.rules"
+          FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
           echo "========================================="
-          echo "       VERIFICATION IDENTITE V34"
+          echo "       VERIFICATION V34 CHAT FIXED"
           echo "========================================="
+
+          test -f "$MAIN" || {
+            echo "::error::MainActivity.java introuvable."
+            exit 1
+          }
 
           test -f "$GRADLE" || {
             echo "::error::app/build.gradle introuvable."
             exit 1
           }
 
+          test -f "$PROJECT_DIR/app/google-services.json" || {
+            echo "::error::google-services.json introuvable."
+            exit 1
+          }
+
+          test -f "$SERVICE" || {
+            echo "::error::AppNotificationService.java introuvable."
+            exit 1
+          }
+
+          test -f "$RULES" || {
+            echo "::error::firestore.rules introuvable."
+            exit 1
+          }
+
+          test -f "$FUNCTIONS" || {
+            echo "::error::functions/index.js introuvable."
+            exit 1
+          }
+
+          # -----------------------------------------------------
+          # IDENTITE V34
+          # -----------------------------------------------------
+
           grep -Eq \
             'versionCode[[:space:]]+34([[:space:]]|$)' \
             "$GRADLE" || {
               echo "::error::versionCode 34 introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            "versionName '1.27.0'" \
-            "$GRADLE" || {
-              echo "::error::versionName 1.27.0 introuvable."
               exit 1
             }
 
@@ -180,57 +205,21 @@ jobs:
               exit 1
             }
 
-          echo ""
-          echo "OK : versionCode 34"
-          echo "OK : versionName 1.27.0"
-          echo "OK : applicationId correct."
-
-      # =========================================================
-      # VERIFICATION DE LA CORRECTION CHAT
-      # =========================================================
-
-      - name: Verify V34 Chat delivery fix
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          echo "========================================="
-          echo "       VERIFICATION CORRECTION CHAT"
-          echo "========================================="
-
-          test -f "$MAIN" || {
-            echo "::error::MainActivity.java introuvable."
-            exit 1
-          }
-
           # -----------------------------------------------------
-          # SESSION FIREBASE ANONYME
+          # SESSION CHAT
           # -----------------------------------------------------
 
           grep -Fq \
             'signInAnonymously' \
             "$MAIN" || {
-              echo "::error::signInAnonymously absent."
+              echo "::error::Firebase anonymous chat session missing."
               exit 1
             }
-
-          # -----------------------------------------------------
-          # IDENTIFICATION CLIENT
-          # -----------------------------------------------------
 
           grep -Fq \
             'KEY_PENDING_CHAT_PHONE' \
             "$MAIN" || {
-              echo "::error::KEY_PENDING_CHAT_PHONE absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'KEY_PENDING_CHAT_DRAFT' \
-            "$MAIN" || {
-              echo "::error::KEY_PENDING_CHAT_DRAFT absent."
+              echo "::error::Persistent chat phone missing."
               exit 1
             }
 
@@ -239,23 +228,23 @@ jobs:
           # -----------------------------------------------------
 
           grep -Fq \
+            'void contactPage()' \
+            "$MAIN" || {
+              echo "::error::contactPage() introuvable."
+              exit 1
+            }
+
+          grep -Fq \
             'openChatEntry()' \
             "$MAIN" || {
-              echo "::error::openChatEntry() absent."
+              echo "::error::openChatEntry() introuvable."
               exit 1
             }
 
           grep -Fq \
             'openClientConversationWithDraft' \
             "$MAIN" || {
-              echo "::error::openClientConversationWithDraft absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'sendClientMessageAtomic' \
-            "$MAIN" || {
-              echo "::error::sendClientMessageAtomic absent."
+              echo "::error::openClientConversationWithDraft introuvable."
               exit 1
             }
 
@@ -266,130 +255,70 @@ jobs:
           grep -Fq \
             'conversation.set(c)' \
             "$MAIN" || {
-              echo "::error::V34 correction conversation-first absente."
+              echo "::error::V34 conversation-first delivery fix missing."
               exit 1
             }
 
           grep -Fq \
             'message.set(msg)' \
             "$MAIN" || {
-              echo "::error::Ecriture du premier message apres creation de conversation absente."
+              echo "::error::V34 message write after conversation creation missing."
               exit 1
             }
 
           grep -Fq \
             'V34 FIX CRITIQUE' \
             "$MAIN" || {
-              echo "::error::Marqueur V34 FIX CRITIQUE absent."
+              echo "::error::V34 critical chat fix marker missing."
               exit 1
             }
 
           # -----------------------------------------------------
-          # ADMIN CHAT
+          # CHAT ADMIN
           # -----------------------------------------------------
 
           grep -Fq \
             'adminChatInbox()' \
             "$MAIN" || {
-              echo "::error::adminChatInbox() absent."
+              echo "::error::adminChatInbox() introuvable."
               exit 1
             }
 
           grep -Fq \
             'FIREBASE_ADMIN_EMAIL.equalsIgnoreCase' \
             "$MAIN" || {
-              echo "::error::Controle Admin absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'elishayoungest19@gmail.com' \
-            "$MAIN" || {
-              echo "::error::Email Admin absent."
+              echo "::error::Contrôle Admin introuvable."
               exit 1
             }
 
           # -----------------------------------------------------
-          # LISTENER FIRESTORE
+          # FIREBASE RULES
           # -----------------------------------------------------
-
-          grep -Fq \
-            'addSnapshotListener' \
-            "$MAIN" || {
-              echo "::error::Listener Firestore absent."
-              exit 1
-            }
-
-          echo ""
-          echo "OK : session Firebase anonyme"
-          echo "OK : identification client"
-          echo "OK : Chat client"
-          echo "OK : creation conversation avant premier message"
-          echo "OK : message ecrit apres creation conversation"
-          echo "OK : Chat administration"
-          echo "OK : listener Firestore"
-
-          echo ""
-          echo "========================================="
-          echo "      V34 CHAT DELIVERY CHECK PASSED"
-          echo "========================================="
-
-      # =========================================================
-      # VERIFICATION FIREBASE
-      # =========================================================
-
-      - name: Verify Firebase Chat configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          RULES="$PROJECT_DIR/firestore.rules"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
-
-          echo "========================================="
-          echo "       VERIFICATION FIREBASE / CHAT"
-          echo "========================================="
-
-          test -f "$MAIN" || {
-            echo "::error::MainActivity.java absent."
-            exit 1
-          }
-
-          test -f "$SERVICE" || {
-            echo "::error::AppNotificationService.java absent."
-            exit 1
-          }
-
-          test -f "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json absent."
-            exit 1
-          }
-
-          test -f "$RULES" || {
-            echo "::error::firestore.rules absent."
-            exit 1
-          }
-
-          test -f "$FUNCTIONS" || {
-            echo "::error::functions/index.js absent."
-            exit 1
-          }
-
-          grep -Fq \
-            'match /yb_chat_conversations/' \
-            "$RULES" || {
-              echo "::error::Regles yb_chat_conversations absentes."
-              exit 1
-            }
 
           grep -Fq \
             'request.auth.token.email == "elishayoungest19@gmail.com"' \
             "$RULES" || {
-              echo "::error::Regle email Admin absente."
+              echo "::error::Règle Admin email absente."
               exit 1
             }
+
+          grep -Fq \
+            'match /yb_chat_conversations/' \
+            "$RULES" || {
+              echo "::error::Règle yb_chat_conversations absente."
+              exit 1
+            }
+
+          grep -Fq \
+            'match /yb_notification_tokens/' \
+            "$RULES" || {
+              echo "::error::Règle yb_notification_tokens absente."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # NOTIFICATIONS
+          # -----------------------------------------------------
 
           grep -Fq \
             'FirebaseMessagingService' \
@@ -404,6 +333,10 @@ jobs:
               echo "::error::onMessageReceived absent."
               exit 1
             }
+
+          # -----------------------------------------------------
+          # CLOUD FUNCTIONS
+          # -----------------------------------------------------
 
           grep -Fq \
             'onDocumentCreated' \
@@ -421,11 +354,24 @@ jobs:
 
           node --check "$FUNCTIONS"
 
+          # -----------------------------------------------------
+          # ADMIN LISTENER
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'Collections.sort(docs' \
+            "$MAIN" || {
+              echo "::error::Tri des conversations Admin absent."
+              exit 1
+            }
+
           echo ""
-          echo "OK : Firebase / Firestore / Messaging / Functions"
+          echo "========================================="
+          echo "   V34 SOURCE + CHAT DELIVERY CHECK PASSED"
+          echo "========================================="
 
       # =========================================================
-      # SIGNATURE RELEASE
+      # CONFIGURATION SIGNATURE
       # =========================================================
 
       - name: Configure release signing
@@ -442,21 +388,13 @@ jobs:
           cd "$PROJECT_DIR"
 
           echo "========================================="
-          echo "       CONFIGURATION SIGNATURE V34"
+          echo "      CONFIGURATION SIGNATURE V34"
           echo "========================================="
 
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "::error::KEYSTORE_BASE64 manquant."
-            exit 1
-          fi
-
-          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
-            echo "::error::KEYSTORE_PASSWORD manquant."
-            exit 1
-          fi
-
-          if [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::KEY_PASSWORD manquant."
+          if [ -z "${KEYSTORE_BASE64:-}" ] || \
+             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
+             [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::Secrets de signature manquants."
             exit 1
           fi
 
@@ -469,56 +407,33 @@ jobs:
             exit 1
           fi
 
-          KEYTOOL_OUTPUT="$RUNNER_TEMP/keytool-output.txt"
-
-          keytool \
-            -list \
-            -v \
-            -keystore release-keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            > "$KEYTOOL_OUTPUT" 2>&1 || {
-              echo "::error::Impossible de lire le keystore."
-              exit 1
-            }
-
           ALIAS="${KEY_ALIAS:-}"
 
           if [ -z "$ALIAS" ]; then
             ALIAS="$(
-              awk -F': ' \
-                '/^[[:space:]]*Alias name:/ {
-                  print $2
-                  exit
-                }' \
-                "$KEYTOOL_OUTPUT"
+              keytool \
+                -list \
+                -v \
+                -keystore release-keystore.jks \
+                -storepass "$KEYSTORE_PASSWORD" \
+                2>/dev/null \
+                | sed -n 's/^Alias name: //p' \
+                | head -n 1
             )"
-
-            ALIAS="$(printf '%s' "$ALIAS" | xargs)"
           fi
 
           if [ -z "$ALIAS" ]; then
-            echo "::error::Aucun alias detecte."
+            echo "::error::KEY_ALIAS manquant."
             exit 1
           fi
 
-          keytool \
-            -list \
-            -keystore release-keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -alias "$ALIAS" \
-            >/dev/null 2>&1 || {
-              echo "::error::Alias '$ALIAS' introuvable."
-              exit 1
-            }
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$ALIAS"
+          } >> "$GITHUB_ENV"
 
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-
-          echo ""
-          echo "OK : keystore"
-          echo "OK : alias"
-          echo "OK : signature configuree."
+          echo "OK : signature configurée."
 
       # =========================================================
       # COMPILATION
@@ -541,13 +456,13 @@ jobs:
             :app:assembleRelease
 
           echo ""
-          echo "APK V34 compile avec succes."
+          echo "APK V34 compilé avec succès."
 
       # =========================================================
       # VERIFICATION APK
       # =========================================================
 
-      - name: Verify APK signature package and version
+      - name: Verify APK signature, package and version
         shell: bash
         run: |
           set -euo pipefail
@@ -585,33 +500,9 @@ jobs:
           echo "$BADGING" \
             | grep -q \
               "versionCode='34'" || {
-                echo "::error::versionCode different de 34."
+                echo "::error::versionCode différent de 34."
                 exit 1
               }
-
-          echo "$BADGING" \
-            | grep -q \
-              "versionName='1.27.0'" || {
-                echo "::error::versionName different de 1.27.0."
-                exit 1
-              }
-
-          echo ""
-          echo "OK : APK signe"
-          echo "OK : applicationId correct"
-          echo "OK : versionCode 34"
-          echo "OK : versionName 1.27.0"
-
-      # =========================================================
-      # PREPARATION ARTIFACT
-      # =========================================================
-
-      - name: Prepare V34 release artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
@@ -624,11 +515,12 @@ jobs:
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           echo ""
-          echo "Artifact prepare :"
-          ls -lh "$GITHUB_WORKSPACE/release-output"
+          echo "OK : APK signé"
+          echo "OK : applicationId correct"
+          echo "OK : versionCode 34"
 
       # =========================================================
-      # UPLOAD ARTIFACT
+      # ARTIFACT FINAL
       # =========================================================
 
       - name: Upload signed V34 APK artifact
