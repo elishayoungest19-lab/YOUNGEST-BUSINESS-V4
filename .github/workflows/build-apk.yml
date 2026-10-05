@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V34 Chat Persistent Delivery
+name: Build YOUNGEST'S BUSINESS V34 Admin Cards
 
 on:
   workflow_dispatch:
@@ -16,26 +16,14 @@ jobs:
 
     steps:
 
-      # =========================================================
-      # CHECKOUT
-      # =========================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # =========================================================
-      # JAVA 17
-      # =========================================================
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      # =========================================================
-      # ANDROID SDK
-      # =========================================================
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -46,20 +34,12 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # =========================================================
-      # GRADLE 8.9
-      # =========================================================
-
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # =========================================================
-      # RECHERCHE DU VRAI SOURCE V33
-      # =========================================================
-
-      - name: Find and extract V33 source for V34
+      - name: Find and extract V34 Admin Cards source
         shell: bash
         run: |
           set -euo pipefail
@@ -68,21 +48,21 @@ jobs:
           ZIP_PATH=""
 
           echo "========================================="
-          echo "     RECHERCHE DU SOURCE V33"
+          echo "   RECHERCHE DU SOURCE V34 ADMIN CARDS"
           echo "========================================="
 
           ZIP_PATH="$(
             find "$ROOT" \
               -maxdepth 5 \
               -type f \
-              -name 'YOUNGEST-BUSINESS-V33-CHAT-PERSISTENT-DELIVERY-source*.zip' \
+              -name 'YOUNGEST-BUSINESS-V34-ADMIN-CARDS-SOURCE*.zip' \
               -print \
               | sort \
               | tail -n 1
-          )"
+          )
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Source V33 introuvable."
+            echo "::error::Source V34 Admin Cards introuvable."
 
             echo ""
             echo "ZIP disponibles :"
@@ -97,11 +77,8 @@ jobs:
           fi
 
           echo ""
-          echo "SOURCE V33 TROUVE :"
+          echo "SOURCE V34 ADMIN CARDS TROUVE :"
           echo "$ZIP_PATH"
-
-          echo ""
-          echo "Verification de l'archive..."
 
           unzip -t "$ZIP_PATH"
 
@@ -109,9 +86,6 @@ jobs:
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
-
-          echo ""
-          echo "Extraction du source V33..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -135,563 +109,3 @@ jobs:
           echo ""
           echo "Projet Android detecte :"
           echo "$PROJECT_DIR"
-
-      # =========================================================
-      # TRANSFORMATION V33 -> V34
-      # =========================================================
-
-      - name: Prepare source V34
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          GRADLE="$PROJECT_DIR/app/build.gradle"
-
-          echo "========================================="
-          echo "       PREPARATION DU SOURCE V34"
-          echo "========================================="
-
-          test -f "$GRADLE" || {
-            echo "::error::app/build.gradle introuvable."
-            exit 1
-          }
-
-          echo ""
-          echo "Version avant transformation :"
-
-          grep -n "versionCode" "$GRADLE" || true
-          grep -n "versionName" "$GRADLE" || true
-
-          sed -i -E \
-            's/versionCode[[:space:]]+33/versionCode 34/' \
-            "$GRADLE"
-
-          sed -i -E \
-            "s/versionName[[:space:]]+'1\.26\.0'/versionName '1.27.0'/" \
-            "$GRADLE"
-
-          echo ""
-          echo "Version apres transformation :"
-
-          grep -n "versionCode" "$GRADLE" || true
-          grep -n "versionName" "$GRADLE" || true
-
-          grep -Eq \
-            'versionCode[[:space:]]+34([[:space:]]|$)' \
-            "$GRADLE" || {
-              echo "::error::versionCode 34 introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            "versionName '1.27.0'" \
-            "$GRADLE" || {
-              echo "::error::versionName 1.27.0 introuvable."
-              exit 1
-            }
-
-          echo ""
-          echo "OK : source V33 transforme en V34."
-
-      # =========================================================
-      # VERIFICATION SOURCE V34
-      # =========================================================
-
-      - name: Verify V34 source and chat components
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          GRADLE="$PROJECT_DIR/app/build.gradle"
-          RULES="$PROJECT_DIR/firestore.rules"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
-
-          echo "========================================="
-          echo "        VERIFICATION SOURCE V34"
-          echo "========================================="
-
-          test -f "$MAIN" || {
-            echo "::error::MainActivity.java introuvable."
-            exit 1
-          }
-
-          test -f "$SERVICE" || {
-            echo "::error::AppNotificationService.java introuvable."
-            exit 1
-          }
-
-          test -f "$GRADLE" || {
-            echo "::error::app/build.gradle introuvable."
-            exit 1
-          }
-
-          test -f "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json introuvable."
-            exit 1
-          }
-
-          test -f "$RULES" || {
-            echo "::error::firestore.rules introuvable."
-            exit 1
-          }
-
-          test -f "$FUNCTIONS" || {
-            echo "::error::functions/index.js introuvable."
-            exit 1
-          }
-
-          echo "OK : fichiers principaux presents."
-
-          grep -Eq \
-            'versionCode[[:space:]]+34([[:space:]]|$)' \
-            "$GRADLE" || {
-              echo "::error::versionCode 34 incorrect."
-              exit 1
-            }
-
-          grep -Fq \
-            "versionName '1.27.0'" \
-            "$GRADLE" || {
-              echo "::error::versionName 1.27.0 incorrect."
-              exit 1
-            }
-
-          grep -Fq \
-            "applicationId 'com.aistudio.youngestbiz.mbkz'" \
-            "$GRADLE" || {
-              echo "::error::applicationId incorrect."
-              exit 1
-            }
-
-          echo "OK : identite application."
-
-          grep -Fq \
-            'void contactPage()' \
-            "$MAIN" || {
-              echo "::error::contactPage() introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'openChatEntry()' \
-            "$MAIN" || {
-              echo "::error::openChatEntry() introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'openClientConversationWithDraft' \
-            "$MAIN" || {
-              echo "::error::openClientConversationWithDraft introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'SharedPreferences' \
-            "$MAIN" || {
-              echo "::error::SharedPreferences introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'KEY_PENDING_CHAT_DRAFT' \
-            "$MAIN" || {
-              echo "::error::KEY_PENDING_CHAT_DRAFT introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'firestore.runTransaction' \
-            "$MAIN" || {
-              echo "::error::Transaction Firestore introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'PhoneAuthProvider.verifyPhoneNumber(options)' \
-            "$MAIN" || {
-              echo "::error::Phone Authentication introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'adminChatInbox()' \
-            "$MAIN" || {
-              echo "::error::adminChatInbox() introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'elishayoungest19@gmail.com' \
-            "$MAIN" || {
-              echo "::error::Gmail Admin introuvable."
-              exit 1
-            }
-
-          echo "OK : Chat client et Admin."
-
-          grep -Fq \
-            'FirebaseMessagingService' \
-            "$SERVICE" || {
-              echo "::error::FirebaseMessagingService introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'onMessageReceived' \
-            "$SERVICE" || {
-              echo "::error::onMessageReceived introuvable."
-              exit 1
-            }
-
-          echo "OK : Firebase Messaging."
-
-          grep -Fq \
-            'match /yb_chat_conversations/' \
-            "$RULES" || {
-              echo "::error::Regle yb_chat_conversations introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'match /yb_notification_tokens/' \
-            "$RULES" || {
-              echo "::error::Regle yb_notification_tokens introuvable."
-              exit 1
-            }
-
-          echo "OK : Firestore Chat."
-
-          grep -Fq \
-            'onDocumentCreated' \
-            "$FUNCTIONS" || {
-              echo "::error::onDocumentCreated introuvable."
-              exit 1
-            }
-
-          grep -Fq \
-            'notifyClientWhenAdminReplies' \
-            "$FUNCTIONS" || {
-              echo "::error::notifyClientWhenAdminReplies introuvable."
-              exit 1
-            }
-
-          node --check "$FUNCTIONS"
-
-          echo ""
-          echo "========================================="
-          echo "       V34 SOURCE CHECKS PASSED"
-          echo "========================================="
-
-      # =========================================================
-      # CONFIGURATION SIGNATURE
-      # =========================================================
-
-      - name: Configure release signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-
-        run: |
-          set -euo pipefail
-
-          echo "========================================="
-          echo "      CONFIGURATION SIGNATURE V34"
-          echo "========================================="
-
-          cd "$PROJECT_DIR"
-
-          # -----------------------------------------------------
-          # VERIFICATION SECRETS
-          # -----------------------------------------------------
-
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "::error::KEYSTORE_BASE64 manquant."
-            exit 1
-          fi
-
-          if [ -z "${KEYSTORE_PASSWORD:-}" ]; then
-            echo "::error::KEYSTORE_PASSWORD manquant."
-            exit 1
-          fi
-
-          if [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::KEY_PASSWORD manquant."
-            exit 1
-          fi
-
-          echo "OK : secrets principaux presents."
-
-          # -----------------------------------------------------
-          # CREATION KEYSTORE
-          # -----------------------------------------------------
-
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-
-          if [ ! -s release-keystore.jks ]; then
-            echo "::error::Keystore vide."
-            exit 1
-          fi
-
-          echo "OK : keystore Release cree."
-
-          # -----------------------------------------------------
-          # DETECTION ALIAS
-          # -----------------------------------------------------
-
-          KEYTOOL_OUTPUT="$RUNNER_TEMP/keytool-output.txt"
-
-          rm -f "$KEYTOOL_OUTPUT"
-
-          if ! keytool \
-            -list \
-            -v \
-            -keystore release-keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            > "$KEYTOOL_OUTPUT" 2>&1
-          then
-
-            echo "::error::Impossible de lire le keystore."
-
-            echo ""
-            echo "Sortie keytool :"
-
-            cat "$KEYTOOL_OUTPUT" || true
-
-            exit 1
-          fi
-
-          echo ""
-          echo "Keystore lu avec succes."
-
-          # -----------------------------------------------------
-          # SI KEY_ALIAS EXISTE, ON L'UTILISE
-          # SINON ON DETECTE AUTOMATIQUEMENT
-          # -----------------------------------------------------
-
-          if [ -n "${KEY_ALIAS:-}" ]; then
-
-            ALIAS="$KEY_ALIAS"
-
-            echo "KEY_ALIAS fourni par GitHub."
-
-          else
-
-            echo "KEY_ALIAS non fourni."
-            echo "Detection automatique de l'alias..."
-
-            ALIAS="$(
-              awk -F': ' \
-                '/^[[:space:]]*Alias name:/ {
-                  print $2
-                  exit
-                }' \
-                "$KEYTOOL_OUTPUT"
-            )"
-
-            ALIAS="$(printf '%s' "$ALIAS" | xargs)"
-
-          fi
-
-          # -----------------------------------------------------
-          # VERIFICATION ALIAS
-          # -----------------------------------------------------
-
-          if [ -z "$ALIAS" ]; then
-
-            echo "::error::Aucun alias detecte dans le keystore."
-
-            echo ""
-            echo "Premieres informations du keystore :"
-
-            grep -E \
-              'Alias name:|Entry type:|Your keystore contains' \
-              "$KEYTOOL_OUTPUT" \
-              || true
-
-            exit 1
-          fi
-
-          echo "Alias utilise : $ALIAS"
-
-          # -----------------------------------------------------
-          # VERIFICATION DE L'ALIAS
-          # -----------------------------------------------------
-
-          if ! keytool \
-            -list \
-            -keystore release-keystore.jks \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -alias "$ALIAS" \
-            >/dev/null 2>&1
-          then
-
-            echo "::error::L'alias '$ALIAS' n'existe pas dans le keystore."
-
-            echo ""
-            echo "Aliases disponibles :"
-
-            grep \
-              -E \
-              '^[[:space:]]*Alias name:' \
-              "$KEYTOOL_OUTPUT" \
-              || true
-
-            exit 1
-          fi
-
-          echo "OK : alias Release verifie."
-
-          # -----------------------------------------------------
-          # VARIABLES GRADLE
-          # -----------------------------------------------------
-
-          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-
-          echo ""
-          echo "========================================="
-          echo "   SIGNATURE V34 CONFIGUREE AVEC SUCCES"
-          echo "========================================="
-
-      # =========================================================
-      # COMPILATION V34
-      # =========================================================
-
-      - name: Build release APK V34
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "$PROJECT_DIR"
-
-          echo "========================================="
-          echo "   COMPILATION YOUNGEST'S BUSINESS V34"
-          echo "========================================="
-
-          gradle \
-            --no-daemon \
-            clean \
-            :app:assembleRelease
-
-          echo ""
-          echo "========================================="
-          echo "      COMPILATION V34 TERMINEE"
-          echo "========================================="
-
-      # =========================================================
-      # VERIFICATION APK
-      # =========================================================
-
-      - name: Verify APK signature, package and version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          if [ ! -s "$APK" ]; then
-            echo "::error::APK release introuvable."
-            exit 1
-          fi
-
-          echo "========================================="
-          echo "       VERIFICATION SIGNATURE APK"
-          echo "========================================="
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
-            --verbose \
-            --print-certs \
-            "$APK"
-
-          echo ""
-          echo "========================================="
-          echo "       VERIFICATION IDENTITE APK"
-          echo "========================================="
-
-          BADGING="$(
-            "$ANDROID_HOME/build-tools/35.0.0/aapt" \
-              dump badging \
-              "$APK"
-          )"
-
-          echo "$BADGING" | head -n 5
-
-          echo "$BADGING" | grep -q \
-            "package: name='com.aistudio.youngestbiz.mbkz'" || {
-              echo "::error::ApplicationId incorrect."
-              exit 1
-            }
-
-          echo "$BADGING" | grep -q \
-            "versionCode='34'" || {
-              echo "::error::versionCode 34 absent."
-              exit 1
-            }
-
-          echo "$BADGING" | grep -q \
-            "versionName='1.27.0'" || {
-              echo "::error::versionName 1.27.0 absent."
-              exit 1
-            }
-
-          echo ""
-          echo "OK : applicationId correct."
-          echo "OK : versionCode 34."
-          echo "OK : versionName 1.27.0."
-          echo "OK : signature valide."
-
-      # =========================================================
-      # PREPARATION ARTIFACT
-      # =========================================================
-
-      - name: Prepare V34 artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          cp \
-            "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY.apk" \
-            > \
-            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-          echo ""
-          echo "========================================="
-          echo "          ARTIFACT V34 PRET"
-          echo "========================================="
-
-          ls -lh "$GITHUB_WORKSPACE/release-output"
-
-          echo ""
-          echo "SHA256 :"
-
-          cat \
-            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-      # =========================================================
-      # UPLOAD ARTIFACT V34
-      # =========================================================
-
-      - name: Upload signed V34 APK artifact
-        uses: actions/upload-artifact@v4
-
-        with:
-          name: YOUNGEST-BUSINESS-V34-CHAT-PERSISTENT-DELIVERY
-          path: release-output/*
-          if-no-files-found: error
-          retention-days: 30
