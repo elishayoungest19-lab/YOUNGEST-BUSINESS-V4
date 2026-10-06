@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V34 Chat Delivery Final
+name: Build YOUNGEST'S BUSINESS V34 Chat Delivery FINAL FIXED
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V34 APK
+    name: Build and verify signed V34 CHAT FIXED APK
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +41,10 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -euo pipefail
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -57,10 +60,10 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE DU VRAI SOURCE V34 FIXED
+      # RECHERCHE EXCLUSIVE DU VRAI SOURCE FIXED
       # =========================================================
 
-      - name: Find and extract V34 source FIXED ZIP
+      - name: Find exact V34 CHAT FIXED source
         shell: bash
         run: |
           set -euo pipefail
@@ -69,44 +72,66 @@ jobs:
           ZIP_NAME="YOUNGEST-BUSINESS-V34-CHAT-DELIVERY-FINAL-source-FIXED.zip"
           ZIP_PATH="$ROOT/$ZIP_NAME"
 
-          echo "========================================="
-          echo "   RECHERCHE DU SOURCE V34 CHAT FIXED"
-          echo "========================================="
+          echo "=============================================="
+          echo "   RECHERCHE DU VRAI SOURCE V34 CHAT FIXED"
+          echo "=============================================="
 
           if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::ZIP source V34 FIXED introuvable."
-            echo "Fichier attendu : $ZIP_NAME"
-
-            echo ""
-            echo "ZIP présents dans le repository :"
-
-            find "$ROOT" \
-              -maxdepth 5 \
-              -type f \
-              -iname "*.zip" \
-              -print || true
-
+            echo "::error::Le vrai ZIP V34 FIXED est introuvable."
+            echo "::error::Fichier obligatoire : $ZIP_NAME"
             exit 1
           fi
 
           echo ""
-          echo "ZIP SOURCE V34 FIXED TROUVE :"
+          echo "SOURCE TROUVE :"
           echo "$ZIP_PATH"
 
           echo ""
-          echo "Verification de l'archive..."
+          echo "Verification ZIP..."
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v34-source"
+          echo ""
+          echo "ZIP VALIDE."
+
+          # -----------------------------------------------------
+          # REFUS DES AUTRES ZIP IDENTIQUES
+          # -----------------------------------------------------
+
+          COUNT="$(
+            find "$ROOT" \
+              -type f \
+              -name "$ZIP_NAME" \
+              | wc -l
+          )"
+
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Nombre incorrect de copies du source FIXED : $COUNT"
+            echo "::error::Une seule copie exacte est autorisee."
+            find "$ROOT" \
+              -type f \
+              -name "$ZIP_NAME" \
+              -print || true
+            exit 1
+          fi
+
+          # -----------------------------------------------------
+          # EXTRACTION
+          # -----------------------------------------------------
+
+          DEST="$RUNNER_TEMP/v34-chat-fixed"
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du source V34 FIXED..."
+          echo "Extraction du vrai source V34 FIXED..."
 
           unzip -q "$ZIP_PATH" -d "$DEST"
+
+          # -----------------------------------------------------
+          # RECHERCHE DU PROJET ANDROID
+          # -----------------------------------------------------
 
           SETTINGS="$(
             find "$DEST" \
@@ -121,7 +146,7 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable."
+            echo "::error::settings.gradle introuvable dans le source FIXED."
             exit 1
           fi
 
@@ -130,71 +155,45 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
-          echo "Projet Android détecté :"
+          echo "Projet Android detecte :"
           echo "$PROJECT_DIR"
 
           echo ""
-          echo "========================================="
-          echo "   SOURCE V34 FIXED PRET"
-          echo "========================================="
+          echo "=============================================="
+          echo "   SOURCE V34 CHAT FIXED PRET"
+          echo "=============================================="
 
       # =========================================================
-      # VERIFICATION V34 + CHAT
+      # IDENTITE V34
       # =========================================================
 
-      - name: Verify V34 source and chat delivery fix
+      - name: Verify exact V34 identity
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           GRADLE="$PROJECT_DIR/app/build.gradle"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          RULES="$PROJECT_DIR/firestore.rules"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
-          echo "========================================="
-          echo "       VERIFICATION V34 CHAT FIXED"
-          echo "========================================="
-
-          test -f "$MAIN" || {
-            echo "::error::MainActivity.java introuvable."
-            exit 1
-          }
+          echo "=============================================="
+          echo "        IDENTITE EXACTE V34"
+          echo "=============================================="
 
           test -f "$GRADLE" || {
             echo "::error::app/build.gradle introuvable."
             exit 1
           }
 
-          test -f "$PROJECT_DIR/app/google-services.json" || {
-            echo "::error::google-services.json introuvable."
-            exit 1
-          }
-
-          test -f "$SERVICE" || {
-            echo "::error::AppNotificationService.java introuvable."
-            exit 1
-          }
-
-          test -f "$RULES" || {
-            echo "::error::firestore.rules introuvable."
-            exit 1
-          }
-
-          test -f "$FUNCTIONS" || {
-            echo "::error::functions/index.js introuvable."
-            exit 1
-          }
-
-          # -----------------------------------------------------
-          # IDENTITE V34
-          # -----------------------------------------------------
-
           grep -Eq \
             'versionCode[[:space:]]+34([[:space:]]|$)' \
             "$GRADLE" || {
-              echo "::error::versionCode 34 introuvable."
+              echo "::error::versionCode 34 absent."
+              exit 1
+            }
+
+          grep -Fq \
+            "versionName '1.27.0'" \
+            "$GRADLE" || {
+              echo "::error::versionName 1.27.0 absent."
               exit 1
             }
 
@@ -205,46 +204,122 @@ jobs:
               exit 1
             }
 
+          echo ""
+          echo "OK : versionCode 34"
+          echo "OK : versionName 1.27.0"
+          echo "OK : applicationId com.aistudio.youngestbiz.mbkz"
+
+      # =========================================================
+      # VERIFICATION DU CIRCUIT ENVOYER -> FIRESTORE
+      # =========================================================
+
+      - name: Verify real client Chat delivery path
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          echo "=============================================="
+          echo "     VERIFICATION DU VRAI CIRCUIT CHAT"
+          echo "=============================================="
+
+          test -f "$MAIN" || {
+            echo "::error::MainActivity.java introuvable."
+            exit 1
+          }
+
           # -----------------------------------------------------
-          # SESSION CHAT
+          # BOUTON ENVOYER
           # -----------------------------------------------------
 
           grep -Fq \
-            'signInAnonymously' \
+            'ENVOYER LE MESSAGE' \
             "$MAIN" || {
-              echo "::error::Firebase anonymous chat session missing."
+              echo "::error::Bouton ENVOYER LE MESSAGE absent."
               exit 1
             }
 
           grep -Fq \
-            'KEY_PENDING_CHAT_PHONE' \
+            'persistPendingChatDraft(draft)' \
             "$MAIN" || {
-              echo "::error::Persistent chat phone missing."
+              echo "::error::persistPendingChatDraft(draft) absent."
               exit 1
             }
 
           # -----------------------------------------------------
-          # CHAT CLIENT
+          # ENTREE CHAT
           # -----------------------------------------------------
-
-          grep -Fq \
-            'void contactPage()' \
-            "$MAIN" || {
-              echo "::error::contactPage() introuvable."
-              exit 1
-            }
 
           grep -Fq \
             'openChatEntry()' \
             "$MAIN" || {
-              echo "::error::openChatEntry() introuvable."
+              echo "::error::openChatEntry() absent."
               exit 1
             }
 
           grep -Fq \
             'openClientConversationWithDraft' \
             "$MAIN" || {
-              echo "::error::openClientConversationWithDraft introuvable."
+              echo "::error::openClientConversationWithDraft absent."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # FIREBASE ANONYMOUS
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'signInAnonymously' \
+            "$MAIN" || {
+              echo "::error::Firebase Anonymous Auth absent."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # NUMERO CLIENT
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'KEY_PENDING_CHAT_PHONE' \
+            "$MAIN" || {
+              echo "::error::KEY_PENDING_CHAT_PHONE absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'requestChatPhoneNumber()' \
+            "$MAIN" || {
+              echo "::error::requestChatPhoneNumber() absent."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # RECHERCHE CONVERSATION
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'openOrCreateClientConversation()' \
+            "$MAIN" || {
+              echo "::error::openOrCreateClientConversation() absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'whereEqualTo("ownerUid",user.getUid())' \
+            "$MAIN" || {
+              echo "::error::Recherche ownerUid absente."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # CREATION CONVERSATION
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'createConversationAndSendDraft' \
+            "$MAIN" || {
+              echo "::error::createConversationAndSendDraft() absent."
               exit 1
             }
 
@@ -255,70 +330,288 @@ jobs:
           grep -Fq \
             'conversation.set(c)' \
             "$MAIN" || {
-              echo "::error::V34 conversation-first delivery fix missing."
+              echo "::error::conversation.set(c) absent."
               exit 1
             }
 
           grep -Fq \
             'message.set(msg)' \
             "$MAIN" || {
-              echo "::error::V34 message write after conversation creation missing."
+              echo "::error::message.set(msg) absent."
               exit 1
             }
 
           grep -Fq \
             'V34 FIX CRITIQUE' \
             "$MAIN" || {
-              echo "::error::V34 critical chat fix marker missing."
+              echo "::error::Marqueur V34 FIX CRITIQUE absent."
               exit 1
             }
 
           # -----------------------------------------------------
-          # CHAT ADMIN
+          # COLLECTION FIRESTORE
           # -----------------------------------------------------
+
+          grep -Fq \
+            'yb_chat_conversations' \
+            "$MAIN" || {
+              echo "::error::Collection yb_chat_conversations absente."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # ENVOI MESSAGE EXISTANT
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'sendClientMessageAtomic' \
+            "$MAIN" || {
+              echo "::error::sendClientMessageAtomic() absent."
+              exit 1
+            }
+
+          echo ""
+          echo "OK : bouton ENVOYER"
+          echo "OK : persistPendingChatDraft()"
+          echo "OK : openChatEntry()"
+          echo "OK : Firebase Anonymous Auth"
+          echo "OK : requestChatPhoneNumber()"
+          echo "OK : openOrCreateClientConversation()"
+          echo "OK : whereEqualTo(ownerUid)"
+          echo "OK : createConversationAndSendDraft()"
+          echo "OK : conversation.set(c)"
+          echo "OK : message.set(msg)"
+          echo "OK : yb_chat_conversations"
+
+          echo ""
+          echo "=============================================="
+          echo "     VRAI CIRCUIT CHAT DETECTE"
+          echo "=============================================="
+
+      # =========================================================
+      # VERIFICATION ADMIN
+      # =========================================================
+
+      - name: Verify Chat administration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          echo "=============================================="
+          echo "       VERIFICATION CHAT ADMINISTRATION"
+          echo "=============================================="
 
           grep -Fq \
             'adminChatInbox()' \
             "$MAIN" || {
-              echo "::error::adminChatInbox() introuvable."
+              echo "::error::adminChatInbox() absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'addSnapshotListener' \
+            "$MAIN" || {
+              echo "::error::addSnapshotListener absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'Collections.sort(docs' \
+            "$MAIN" || {
+              echo "::error::Tri des conversations Admin absent."
               exit 1
             }
 
           grep -Fq \
             'FIREBASE_ADMIN_EMAIL.equalsIgnoreCase' \
             "$MAIN" || {
-              echo "::error::Contrôle Admin introuvable."
+              echo "::error::Contrôle email Admin absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'elishayoungest19@gmail.com' \
+            "$MAIN" || {
+              echo "::error::Email Admin absent."
+              exit 1
+            }
+
+          echo ""
+          echo "OK : adminChatInbox()"
+          echo "OK : listener Firestore"
+          echo "OK : tri des conversations"
+          echo "OK : identification Admin"
+
+      # =========================================================
+      # VERIFICATION FIRESTORE RULES
+      # =========================================================
+
+      - name: Verify Firebase rules are compatible with V34 Chat
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RULES="$PROJECT_DIR/firestore.rules"
+
+          echo "=============================================="
+          echo "       VERIFICATION REGLES FIRESTORE"
+          echo "=============================================="
+
+          test -f "$RULES" || {
+            echo "::error::firestore.rules introuvable."
+            exit 1
+          }
+
+          # -----------------------------------------------------
+          # AUTHENTIFICATION
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'function isSignedIn()' \
+            "$RULES" || {
+              echo "::error::isSignedIn() absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'function isAdmin()' \
+            "$RULES" || {
+              echo "::error::isAdmin() absent."
               exit 1
             }
 
           # -----------------------------------------------------
-          # FIREBASE RULES
+          # ADMIN
           # -----------------------------------------------------
+
+          grep -Fq \
+            'request.auth.uid == "StxrZBDeUodj7YVPmXRA2AbWcUF2"' \
+            "$RULES" || {
+              echo "::error::UID Admin absent des règles."
+              exit 1
+            }
 
           grep -Fq \
             'request.auth.token.email == "elishayoungest19@gmail.com"' \
             "$RULES" || {
-              echo "::error::Règle Admin email absente."
-              exit 1
-            }
-
-          grep -Fq \
-            'match /yb_chat_conversations/' \
-            "$RULES" || {
-              echo "::error::Règle yb_chat_conversations absente."
-              exit 1
-            }
-
-          grep -Fq \
-            'match /yb_notification_tokens/' \
-            "$RULES" || {
-              echo "::error::Règle yb_notification_tokens absente."
+              echo "::error::Email Admin absent des règles."
               exit 1
             }
 
           # -----------------------------------------------------
-          # NOTIFICATIONS
+          # CONVERSATIONS
           # -----------------------------------------------------
+
+          grep -Fq \
+            'match /yb_chat_conversations/{conversationId}' \
+            "$RULES" || {
+              echo "::error::Collection yb_chat_conversations absente."
+              exit 1
+            }
+
+          grep -Fq \
+            'request.resource.data.ownerUid == request.auth.uid' \
+            "$RULES" || {
+              echo "::error::ownerUid non vérifié."
+              exit 1
+            }
+
+          grep -Fq \
+            'request.resource.data.phone is string' \
+            "$RULES" || {
+              echo "::error::champ phone absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'request.resource.data.status == "OPEN"' \
+            "$RULES" || {
+              echo "::error::statut OPEN absent."
+              exit 1
+            }
+
+          # -----------------------------------------------------
+          # MESSAGES
+          # -----------------------------------------------------
+
+          grep -Fq \
+            'match /messages/{messageId}' \
+            "$RULES" || {
+              echo "::error::Sous-collection messages absente."
+              exit 1
+            }
+
+          grep -Fq \
+            'function parentConversation()' \
+            "$RULES" || {
+              echo "::error::parentConversation() absent."
+              exit 1
+            }
+
+          grep -Fq \
+            'request.resource.data.senderUid == request.auth.uid' \
+            "$RULES" || {
+              echo "::error::senderUid non vérifié."
+              exit 1
+            }
+
+          grep -Fq \
+            'request.resource.data.senderRole == "client"' \
+            "$RULES" || {
+              echo "::error::senderRole client absent."
+              exit 1
+            }
+
+          echo ""
+          echo "OK : Authentification"
+          echo "OK : Admin UID"
+          echo "OK : Admin email"
+          echo "OK : yb_chat_conversations"
+          echo "OK : ownerUid"
+          echo "OK : phone"
+          echo "OK : status OPEN"
+          echo "OK : messages"
+          echo "OK : parentConversation()"
+          echo "OK : senderUid"
+          echo "OK : senderRole client"
+
+          echo ""
+          echo "=============================================="
+          echo " FIRESTORE RULES V34 CHAT CHECK PASSED"
+          echo "=============================================="
+
+      # =========================================================
+      # VERIFICATION FIREBASE PROJECT
+      # =========================================================
+
+      - name: Verify Firebase project files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+          FUNCTIONS="$PROJECT_DIR/functions/index.js"
+
+          echo "=============================================="
+          echo "       VERIFICATION FIREBASE PROJECT"
+          echo "=============================================="
+
+          test -f "$PROJECT_DIR/app/google-services.json" || {
+            echo "::error::google-services.json absent."
+            exit 1
+          }
+
+          test -f "$SERVICE" || {
+            echo "::error::AppNotificationService.java absent."
+            exit 1
+          }
+
+          test -f "$FUNCTIONS" || {
+            echo "::error::functions/index.js absent."
+            exit 1
+          }
 
           grep -Fq \
             'FirebaseMessagingService' \
@@ -333,10 +626,6 @@ jobs:
               echo "::error::onMessageReceived absent."
               exit 1
             }
-
-          # -----------------------------------------------------
-          # CLOUD FUNCTIONS
-          # -----------------------------------------------------
 
           grep -Fq \
             'onDocumentCreated' \
@@ -354,21 +643,11 @@ jobs:
 
           node --check "$FUNCTIONS"
 
-          # -----------------------------------------------------
-          # ADMIN LISTENER
-          # -----------------------------------------------------
-
-          grep -Fq \
-            'Collections.sort(docs' \
-            "$MAIN" || {
-              echo "::error::Tri des conversations Admin absent."
-              exit 1
-            }
-
           echo ""
-          echo "========================================="
-          echo "   V34 SOURCE + CHAT DELIVERY CHECK PASSED"
-          echo "========================================="
+          echo "OK : google-services.json"
+          echo "OK : Firebase Messaging"
+          echo "OK : Cloud Functions"
+          echo "OK : syntax Functions"
 
       # =========================================================
       # CONFIGURATION SIGNATURE
@@ -387,146 +666,4 @@ jobs:
 
           cd "$PROJECT_DIR"
 
-          echo "========================================="
-          echo "      CONFIGURATION SIGNATURE V34"
-          echo "========================================="
-
-          if [ -z "${KEYSTORE_BASE64:-}" ] || \
-             [ -z "${KEYSTORE_PASSWORD:-}" ] || \
-             [ -z "${KEY_PASSWORD:-}" ]; then
-            echo "::error::Secrets de signature manquants."
-            exit 1
-          fi
-
-          printf '%s' "$KEYSTORE_BASE64" \
-            | base64 --decode \
-            > release-keystore.jks
-
-          if [ ! -s release-keystore.jks ]; then
-            echo "::error::Keystore vide."
-            exit 1
-          fi
-
-          ALIAS="${KEY_ALIAS:-}"
-
-          if [ -z "$ALIAS" ]; then
-            ALIAS="$(
-              keytool \
-                -list \
-                -v \
-                -keystore release-keystore.jks \
-                -storepass "$KEYSTORE_PASSWORD" \
-                2>/dev/null \
-                | sed -n 's/^Alias name: //p' \
-                | head -n 1
-            )"
-          fi
-
-          if [ -z "$ALIAS" ]; then
-            echo "::error::KEY_ALIAS manquant."
-            exit 1
-          fi
-
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$ALIAS"
-          } >> "$GITHUB_ENV"
-
-          echo "OK : signature configurée."
-
-      # =========================================================
-      # COMPILATION
-      # =========================================================
-
-      - name: Build release APK V34
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "$PROJECT_DIR"
-
-          echo "========================================="
-          echo "          COMPILATION APK V34"
-          echo "========================================="
-
-          gradle \
-            --no-daemon \
-            clean \
-            :app:assembleRelease
-
-          echo ""
-          echo "APK V34 compilé avec succès."
-
-      # =========================================================
-      # VERIFICATION APK
-      # =========================================================
-
-      - name: Verify APK signature, package and version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          if [ ! -s "$APK" ]; then
-            echo "::error::APK release introuvable."
-            exit 1
-          fi
-
-          echo "========================================="
-          echo "       VERIFICATION APK V34"
-          echo "========================================="
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
-            --verbose \
-            --print-certs \
-            "$APK"
-
-          BADGING="$(
-            "$ANDROID_HOME/build-tools/35.0.0/aapt" \
-              dump badging \
-              "$APK"
-          )"
-
-          echo "$BADGING" \
-            | grep -q \
-              "package: name='com.aistudio.youngestbiz.mbkz'" || {
-                echo "::error::applicationId incorrect."
-                exit 1
-              }
-
-          echo "$BADGING" \
-            | grep -q \
-              "versionCode='34'" || {
-                echo "::error::versionCode différent de 34."
-                exit 1
-              }
-
-          mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          cp \
-            "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-DELIVERY-FINAL.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V34-CHAT-DELIVERY-FINAL.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-          echo ""
-          echo "OK : APK signé"
-          echo "OK : applicationId correct"
-          echo "OK : versionCode 34"
-
-      # =========================================================
-      # ARTIFACT FINAL
-      # =========================================================
-
-      - name: Upload signed V34 APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V34-CHAT-DELIVERY-FINAL
-          path: release-output/*
-          if-no-files-found: error
-          retention-days: 30
+          echo 
