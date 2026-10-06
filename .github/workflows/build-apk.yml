@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V35 Admin Cards Real Chat FIXED
+name: Build YOUNGEST'S BUSINESS V36 Admin Cards Real Chat FIXED
 
 on:
   workflow_dispatch:
@@ -11,10 +11,11 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify signed V35 ADMIN CARDS REAL CHAT APK
+    name: Build and verify signed V36 ADMIN CARDS REAL CHAT APK
     runs-on: ubuntu-latest
 
     steps:
+
       # =========================================================
       # CHECKOUT
       # =========================================================
@@ -40,6 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -54,18 +56,18 @@ jobs:
           gradle-version: '8.9'
 
       # =========================================================
-      # RECHERCHE EXACTE DU ZIP V35 CORRIGE
+      # RECHERCHE EXACTE DU ZIP V36
       # =========================================================
-      - name: Find exact V35 source ZIP
+      - name: Find exact V36 source ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
-          ZIP_NAME="YOUNGEST-BUSINESS-V35-ADMIN-CARDS-REAL-CHAT-FIXED-source.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V36-ADMIN-CARDS-REAL-CHAT-FIXED-source.zip"
 
           echo "=============================================="
-          echo "       RECHERCHE DU VRAI SOURCE V35"
+          echo "       RECHERCHE DU VRAI SOURCE V36"
           echo "=============================================="
 
           ZIP_PATH="$(
@@ -77,9 +79,9 @@ jobs:
           )"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP V35 exact est introuvable."
+            echo "::error::Le ZIP V36 exact est introuvable."
             echo ""
-            echo "ZIP V35 attendu :"
+            echo "ZIP V36 attendu :"
             echo "$ZIP_NAME"
             echo ""
             echo "ZIP disponibles dans le dépôt :"
@@ -88,23 +90,26 @@ jobs:
           fi
 
           echo ""
-          echo "ZIP V35 EXACT TROUVE :"
+          echo "ZIP V36 EXACT TROUVE :"
           echo "$ZIP_PATH"
 
           echo ""
           echo "=============================================="
-          echo "       TEST DE L'ARCHIVE V35"
+          echo "       TEST DE L'ARCHIVE V36"
           echo "=============================================="
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v35-source"
+          DEST="$RUNNER_TEMP/v36-source"
+
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           echo ""
-          echo "Extraction du vrai source V35..."
+          echo "Extraction du vrai source V36..."
+
           unzip -q "$ZIP_PATH" -d "$DEST"
+
           echo "Extraction terminée."
 
           SETTINGS="$(
@@ -116,24 +121,33 @@ jobs:
           )"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le ZIP V35."
-            find "$DEST" -maxdepth 5 -type f -print | sort | head -300
+            echo "::error::settings.gradle introuvable dans le ZIP V36."
+
+            find "$DEST" \
+              -maxdepth 5 \
+              -type f \
+              -print \
+              | sort \
+              | head -300
+
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS")"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           echo ""
           echo "=============================================="
-          echo "       VRAI PROJET ANDROID V35"
+          echo "       VRAI PROJET ANDROID V36"
           echo "=============================================="
+
           echo "$PROJECT_DIR"
 
       # =========================================================
-      # IDENTITE EXACTE V35
+      # IDENTITE EXACTE V36
       # =========================================================
-      - name: Verify exact V35 identity
+      - name: Verify exact V36 identity
         shell: bash
         run: |
           set -euo pipefail
@@ -145,13 +159,13 @@ jobs:
             exit 1
           }
 
-          grep -Eq 'versionCode[[:space:]]+35([[:space:]]|$)' "$GRADLE_FILE" || {
-            echo "::error::Ce source n'est PAS V35 : versionCode 35 absent."
+          grep -Eq 'versionCode[[:space:]]+36([[:space:]]|$)' "$GRADLE_FILE" || {
+            echo "::error::Ce source n'est PAS V36 : versionCode 36 absent."
             exit 1
           }
 
-          grep -Fq "versionName '1.28.0'" "$GRADLE_FILE" || {
-            echo "::error::versionName 1.28.0 absent."
+          grep -Fq "versionName '1.29.0'" "$GRADLE_FILE" || {
+            echo "::error::versionName 1.29.0 absent."
             exit 1
           }
 
@@ -165,30 +179,53 @@ jobs:
             exit 1
           }
 
-          echo "versionCode 35 : OK"
-          echo "versionName 1.28.0 : OK"
+          echo "versionCode 36 : OK"
+          echo "versionName 1.29.0 : OK"
           echo "applicationId : OK"
           echo "namespace : OK"
 
       # =========================================================
       # VERIFICATION FICHIERS PROJET
       # =========================================================
-      - name: Verify V35 project files
+      - name: Verify V36 project files
         shell: bash
         run: |
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
           SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+
           RULES="$PROJECT_DIR/firestore.rules"
+
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
+
           GOOGLE="$PROJECT_DIR/app/google-services.json"
 
-          test -f "$MAIN" || { echo "::error::MainActivity.java introuvable."; exit 1; }
-          test -f "$SERVICE" || { echo "::error::AppNotificationService.java introuvable."; exit 1; }
-          test -f "$RULES" || { echo "::error::firestore.rules introuvable."; exit 1; }
-          test -f "$FUNCTIONS" || { echo "::error::functions/index.js introuvable."; exit 1; }
-          test -f "$GOOGLE" || { echo "::error::google-services.json introuvable."; exit 1; }
+          test -f "$MAIN" || {
+            echo "::error::MainActivity.java introuvable."
+            exit 1
+          }
+
+          test -f "$SERVICE" || {
+            echo "::error::AppNotificationService.java introuvable."
+            exit 1
+          }
+
+          test -f "$RULES" || {
+            echo "::error::firestore.rules introuvable."
+            exit 1
+          }
+
+          test -f "$FUNCTIONS" || {
+            echo "::error::functions/index.js introuvable."
+            exit 1
+          }
+
+          test -f "$GOOGLE" || {
+            echo "::error::google-services.json introuvable."
+            exit 1
+          }
 
           echo "MainActivity.java : OK"
           echo "AppNotificationService.java : OK"
@@ -218,15 +255,18 @@ jobs:
               echo "::error::Carte $label absente."
               exit 1
             }
+
             echo "$label : OK"
           done
 
+          echo ""
           echo "INTERFACE ADMIN EXISTANTE PRESERVEE."
+          echo "Aucune reconstruction des cartes demandée."
 
       # =========================================================
-      # VERIFICATION CHAT CLIENT
+      # VERIFICATION CHAT CLIENT - ELEMENTS DE BASE
       # =========================================================
-      - name: Verify real client Chat delivery path
+      - name: Verify V36 client Chat components
         shell: bash
         run: |
           set -euo pipefail
@@ -246,14 +286,184 @@ jobs:
             'message.set(msg)' \
             'msg.put("ownerUid"'
           do
+
             grep -Fq "$check" "$MAIN" || {
-              echo "::error::$check absent."
+              echo "::error::$check absent du source V36."
               exit 1
             }
+
             echo "$check : OK"
           done
 
-          echo "CHEMIN CHAT CLIENT : VALIDE"
+          echo ""
+          echo "COMPOSANTS CHAT CLIENT : OK"
+
+      # =========================================================
+      # VERIFICATION CRITIQUE V36 :
+      # PAS DE TRANSACTION POUR L'ENVOI DU MESSAGE CLIENT
+      # =========================================================
+      - name: Verify V36 client message delivery does not use transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          python3 - "$MAIN" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              src = f.read()
+
+          method_name = "sendClientMessageAtomic"
+
+          pos = src.find(method_name)
+
+          if pos == -1:
+              print("::error::Méthode sendClientMessageAtomic introuvable.")
+              sys.exit(1)
+
+          brace = src.find("{", pos)
+
+          if brace == -1:
+              print("::error::Ouverture de méthode introuvable.")
+              sys.exit(1)
+
+          depth = 0
+          end = None
+
+          for i in range(brace, len(src)):
+              if src[i] == "{":
+                  depth += 1
+              elif src[i] == "}":
+                  depth -= 1
+
+                  if depth == 0:
+                      end = i + 1
+                      break
+
+          if end is None:
+              print("::error::Impossible de déterminer la fin de sendClientMessageAtomic.")
+              sys.exit(1)
+
+          method = src[pos:end]
+
+          if "runTransaction" in method:
+              print("::error::V36 invalide : sendClientMessageAtomic utilise encore runTransaction.")
+              print("Le message client doit être écrit directement dans messages/{messageId}.")
+              sys.exit(1)
+
+          if "message.set(msg)" not in method:
+              print("::error::V36 invalide : message.set(msg) absent de sendClientMessageAtomic.")
+              sys.exit(1)
+
+          print("sendClientMessageAtomic : OK")
+          print("runTransaction : ABSENT DU CHEMIN D'ENVOI CLIENT")
+          print("message.set(msg) : OK")
+          PY
+
+      # =========================================================
+      # VERIFICATION OWNERUID MESSAGE CLIENT
+      # =========================================================
+      - name: Verify client message ownerUid
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          grep -Fq 'msg.put("ownerUid",user.getUid())' "$MAIN" || \
+          grep -Fq 'msg.put("ownerUid", user.getUid())' "$MAIN" || {
+            echo "::error::ownerUid absent du message client V36."
+            exit 1
+          }
+
+          grep -Fq 'msg.put("senderRole","client")' "$MAIN" || \
+          grep -Fq 'msg.put("senderRole", "client")' "$MAIN" || {
+            echo "::error::senderRole client absent."
+            exit 1
+          }
+
+          grep -Fq 'msg.put("senderUid",user.getUid())' "$MAIN" || \
+          grep -Fq 'msg.put("senderUid", user.getUid())' "$MAIN" || {
+            echo "::error::senderUid client absent."
+            exit 1
+          }
+
+          echo "client ownerUid : OK"
+          echo "client senderUid : OK"
+          echo "client senderRole : OK"
+
+      # =========================================================
+      # VERIFICATION REPONSE ADMIN
+      # =========================================================
+      - name: Verify V36 admin reply ownerUid
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          python3 - "$MAIN" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              src = f.read()
+
+          admin_positions = []
+
+          start = 0
+
+          while True:
+              p = src.find('senderRole","admin"', start)
+
+              if p == -1:
+                  break
+
+              admin_positions.append(p)
+              start = p + 1
+
+          if not admin_positions:
+              admin_positions = []
+
+              start = 0
+
+              while True:
+                  p = src.find('senderRole", "admin"', start)
+
+                  if p == -1:
+                      break
+
+                  admin_positions.append(p)
+                  start = p + 1
+
+          if not admin_positions:
+              print("::error::Aucune création de message admin détectée.")
+              sys.exit(1)
+
+          found = False
+
+          for p in admin_positions:
+              begin = max(0, p - 1800)
+              end = min(len(src), p + 1800)
+
+              block = src[begin:end]
+
+              if 'ownerUid' in block:
+                  found = True
+                  break
+
+          if not found:
+              print("::error::La réponse Admin ne semble pas associer ownerUid au message.")
+              sys.exit(1)
+
+          print("Réponse Admin : ownerUid détecté")
+          print("senderRole admin : détecté")
+          PY
 
       # =========================================================
       # VERIFICATION CHAT ADMIN
@@ -271,17 +481,22 @@ jobs:
             'yb_chat_conversations' \
             'Collections.sort(docs'
           do
+
             grep -Fq "$check" "$MAIN" || {
               echo "::error::$check absent."
               exit 1
             }
+
             echo "$check : OK"
           done
 
+          echo ""
+          echo "ADMIN CHAT : OK"
+
       # =========================================================
-      # VERIFICATION REGLES FIREBASE CHAT
+      # VERIFICATION REGLES FIREBASE V36
       # =========================================================
-      - name: Verify Firebase rules for V35 Chat
+      - name: Verify Firebase rules for V36 Chat
         shell: bash
         run: |
           set -euo pipefail
@@ -302,14 +517,39 @@ jobs:
             'request.resource.data.senderRole == "client"' \
             'request.resource.data.senderRole == "admin"'
           do
+
             grep -Fq "$check" "$RULES" || {
-              echo "::error::$check absent."
+              echo "::error::$check absent des règles V36."
               exit 1
             }
+
             echo "$check : OK"
           done
 
-          echo "REGLES FIREBASE CHAT : OK"
+          echo ""
+          echo "REGLES FIREBASE CHAT : ELEMENTS DE BASE OK"
+
+      # =========================================================
+      # VERIFICATION OWNERUID DANS LES REGLES MESSAGE
+      # =========================================================
+      - name: Verify ownerUid protection in V36 rules
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RULES="$PROJECT_DIR/firestore.rules"
+
+          grep -Fq 'request.resource.data.ownerUid == request.auth.uid' "$RULES" || {
+            echo "::error::Les règles ne protègent pas ownerUid client."
+            exit 1
+          }
+
+          grep -Fq 'ownerUid' "$RULES" || {
+            echo "::error::ownerUid absent des règles Firestore."
+            exit 1
+          }
+
+          echo "Protection ownerUid : OK"
 
       # =========================================================
       # VERIFICATION NOTIFICATIONS
@@ -320,6 +560,7 @@ jobs:
           set -euo pipefail
 
           SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
           grep -Fq 'FirebaseMessagingService' "$SERVICE" || {
@@ -353,13 +594,13 @@ jobs:
       # =========================================================
       # CONFIGURATION SIGNATURE
       #
-      # Le vrai app/build.gradle V35 utilise :
-      # - release-keystore.jks à la racine du projet
+      # Configuration réelle du projet :
+      #
+      # - release-keystore.jks
       # - ANDROID_KEYSTORE_PASSWORD
       # - ANDROID_KEY_ALIAS
       # - ANDROID_KEY_PASSWORD
       #
-      # On respecte donc exactement cette configuration.
       # =========================================================
       - name: Configure release signing
         shell: bash
@@ -406,7 +647,6 @@ jobs:
 
           if [ -z "$KEY_ALIAS" ]; then
             echo "::error::Impossible de récupérer l'alias du keystore."
-            echo "Vérifie KEYSTORE_BASE64 et KEYSTORE_PASSWORD."
             exit 1
           fi
 
@@ -416,42 +656,44 @@ jobs:
 
           echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
 
+          echo ""
           echo "Keystore : OK"
           echo "Alias du keystore récupéré automatiquement : $KEY_ALIAS"
 
       # =========================================================
       # VERIFICATION CONFIGURATION SIGNATURE
       # =========================================================
-      - name: Verify V35 release signing configuration
+      - name: Verify V36 release signing configuration
         shell: bash
         run: |
           set -euo pipefail
 
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
 
           grep -Fq 'signingConfigs' "$GRADLE_FILE" || {
-            echo "::error::signingConfigs absent du vrai app/build.gradle V35."
+            echo "::error::signingConfigs absent du vrai app/build.gradle V36."
             exit 1
           }
 
           grep -Fq 'release-keystore.jks' "$GRADLE_FILE" || {
-            echo "::error::Le Gradle V35 n'utilise pas release-keystore.jks."
+            echo "::error::Le Gradle V36 n'utilise pas release-keystore.jks."
             exit 1
           }
 
           grep -Fq 'ANDROID_KEYSTORE_PASSWORD' "$GRADLE_FILE" || {
-            echo "::error::ANDROID_KEYSTORE_PASSWORD absent du Gradle V35."
+            echo "::error::ANDROID_KEYSTORE_PASSWORD absent du Gradle V36."
             exit 1
           }
 
           grep -Fq 'ANDROID_KEY_ALIAS' "$GRADLE_FILE" || {
-            echo "::error::ANDROID_KEY_ALIAS absent du Gradle V35."
+            echo "::error::ANDROID_KEY_ALIAS absent du Gradle V36."
             exit 1
           }
 
           grep -Fq 'ANDROID_KEY_PASSWORD' "$GRADLE_FILE" || {
-            echo "::error::ANDROID_KEY_PASSWORD absent du Gradle V35."
+            echo "::error::ANDROID_KEY_PASSWORD absent du Gradle V36."
             exit 1
           }
 
@@ -460,23 +702,23 @@ jobs:
             exit 1
           }
 
-          echo "Gradle signingConfig V35 : OK"
+          echo "Gradle signingConfig V36 : OK"
           echo "release-keystore.jks : OK"
           echo "ANDROID_KEYSTORE_PASSWORD : OK"
           echo "ANDROID_KEY_ALIAS : OK"
           echo "ANDROID_KEY_PASSWORD : OK"
 
       # =========================================================
-      # BUILD APK RELEASE
+      # BUILD APK RELEASE V36
       # =========================================================
-      - name: Build signed V35 APK
+      - name: Build signed V36 APK
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
 
           echo "=============================================="
-          echo "          BUILD APK V35"
+          echo "          BUILD APK V36"
           echo "=============================================="
 
           gradle --version
@@ -486,7 +728,7 @@ jobs:
       # =========================================================
       # VERIFICATION APK
       # =========================================================
-      - name: Verify generated APK
+      - name: Verify generated V36 APK
         shell: bash
         run: |
           set -euo pipefail
@@ -494,8 +736,10 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           test -f "$APK" || {
-            echo "::error::APK release introuvable."
-            find "$PROJECT_DIR/app/build/outputs" -type f -print || true
+            echo "::error::APK release V36 introuvable."
+            find "$PROJECT_DIR/app/build/outputs" \
+              -type f \
+              -print || true
             exit 1
           }
 
@@ -504,76 +748,99 @@ jobs:
           ls -lh "$APK"
 
           echo ""
-          echo "Verification AndroidManifest / package / version..."
+          echo "=============================================="
+          echo "VERIFICATION ANDROID MANIFEST"
+          echo "=============================================="
 
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
+          $ANDROID_HOME/build-tools/35.0.0/aapt \
+            dump badging "$APK" \
+            | tee "$RUNNER_TEMP/apk-badging.txt"
 
-          grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'" "$RUNNER_TEMP/apk-badging.txt" || {
-            echo "::error::Package APK incorrect."
-            exit 1
-          }
+          grep -Fq \
+            "package: name='com.aistudio.youngestbiz.mbkz'" \
+            "$RUNNER_TEMP/apk-badging.txt" || {
+              echo "::error::Package APK incorrect."
+              exit 1
+            }
 
-          grep -Fq "versionCode='35'" "$RUNNER_TEMP/apk-badging.txt" || {
-            echo "::error::versionCode APK incorrect."
-            exit 1
-          }
+          grep -Fq \
+            "versionCode='36'" \
+            "$RUNNER_TEMP/apk-badging.txt" || {
+              echo "::error::versionCode APK incorrect."
+              exit 1
+            }
 
-          grep -Fq "versionName='1.28.0'" "$RUNNER_TEMP/apk-badging.txt" || {
-            echo "::error::versionName APK incorrect."
-            exit 1
-          }
+          grep -Fq \
+            "versionName='1.29.0'" \
+            "$RUNNER_TEMP/apk-badging.txt" || {
+              echo "::error::versionName APK incorrect."
+              exit 1
+            }
 
+          echo ""
           echo "Package : OK"
-          echo "versionCode 35 : OK"
-          echo "versionName 1.28.0 : OK"
+          echo "versionCode 36 : OK"
+          echo "versionName 1.29.0 : OK"
 
       # =========================================================
-      # RENOMMAGE APK
+      # RENOMMAGE APK FINAL
       # =========================================================
-      - name: Rename final APK
+      - name: Rename final V36 APK
         shell: bash
         run: |
           set -euo pipefail
 
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
-          FINAL="$PROJECT_DIR/app/build/outputs/apk/release/YOUNGEST-BUSINESS-V35-ADMIN-CARDS-REAL-CHAT-FIXED.apk"
+          FINAL="$PROJECT_DIR/app/build/outputs/apk/release/YOUNGEST-BUSINESS-V36-ADMIN-CARDS-REAL-CHAT-FIXED.apk"
 
           cp "$APK" "$FINAL"
 
           test -f "$FINAL"
 
-          echo "APK FINAL :"
+          echo ""
+          echo "=============================================="
+          echo "APK FINAL V36"
+          echo "=============================================="
+
           echo "$FINAL"
 
+          ls -lh "$FINAL"
+
       # =========================================================
-      # ARTIFACT
+      # ARTIFACT V36
       # =========================================================
-      - name: Upload V35 APK artifact
+      - name: Upload V36 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V35-ADMIN-CARDS-REAL-CHAT-FIXED
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/YOUNGEST-BUSINESS-V35-ADMIN-CARDS-REAL-CHAT-FIXED.apk
+          name: YOUNGEST-BUSINESS-V36-ADMIN-CARDS-REAL-CHAT-FIXED
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/YOUNGEST-BUSINESS-V36-ADMIN-CARDS-REAL-CHAT-FIXED.apk
           if-no-files-found: error
           retention-days: 30
 
       # =========================================================
-      # RESUME FINAL
+      # RESUME FINAL V36
       # =========================================================
-      - name: Final V35 verification
+      - name: Final V36 verification
         shell: bash
         run: |
+          echo ""
           echo "=============================================="
-          echo "       YOUNGEST'S BUSINESS V35"
+          echo "       YOUNGEST'S BUSINESS V36"
           echo "=============================================="
           echo ""
+          echo "VERSION : 36 / 1.29.0"
+          echo ""
           echo "ADMIN CARDS : PRESERVEES"
-          echo "REAL CHAT CLIENT -> ADMIN : VERIFIE"
-          echo "ownerUid MESSAGE : VERIFIE"
+          echo "CLIENT CHAT : VERIFIE"
+          echo "CLIENT ownerUid : VERIFIE"
+          echo "CLIENT MESSAGE DIRECT : VERIFIE"
+          echo "runTransaction CHAT : ABSENT DU CHEMIN CLIENT"
+          echo "ADMIN REPLY ownerUid : VERIFIE"
           echo "FIREBASE RULES : VERIFIEES"
           echo "NOTIFICATIONS : VERIFIEES"
           echo "APK SIGNE : VERIFIE"
-          echo "VERSION : 35 / 1.28.0"
           echo ""
-          echo "BUILD V35 TERMINE AVEC SUCCES."
-          
+          echo "=============================================="
+          echo "       BUILD V36 TERMINE AVEC SUCCES"
+          echo "=============================================="
