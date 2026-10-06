@@ -352,6 +352,14 @@ jobs:
 
       # =========================================================
       # CONFIGURATION SIGNATURE
+      #
+      # Le vrai app/build.gradle V35 utilise :
+      # - release-keystore.jks à la racine du projet
+      # - ANDROID_KEYSTORE_PASSWORD
+      # - ANDROID_KEY_ALIAS
+      # - ANDROID_KEY_PASSWORD
+      #
+      # On respecte donc exactement cette configuration.
       # =========================================================
       - name: Configure release signing
         shell: bash
@@ -377,7 +385,7 @@ jobs:
             exit 1
           }
 
-          KEYSTORE_FILE="$RUNNER_TEMP/youngest-release.keystore"
+          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
 
           echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
 
@@ -386,9 +394,13 @@ jobs:
             exit 1
           }
 
-          # Recuperation automatique de l'alias du keystore.
+          chmod 600 "$KEYSTORE_FILE"
+
           KEY_ALIAS="$(
-            keytool -list -v               -keystore "$KEYSTORE_FILE"               -storepass "$KEYSTORE_PASSWORD"               2>/dev/null |
+            keytool -list -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass "$KEYSTORE_PASSWORD" \
+              2>/dev/null |
               awk -F': ' '/^Alias name:/{print $2; exit}'
           )"
 
@@ -398,74 +410,61 @@ jobs:
             exit 1
           fi
 
+          echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
           echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
 
           echo "Keystore : OK"
           echo "Alias du keystore récupéré automatiquement : $KEY_ALIAS"
 
       # =========================================================
-      # INJECTION SIGNATURE DANS GRADLE
+      # VERIFICATION CONFIGURATION SIGNATURE
       # =========================================================
-      - name: Configure Gradle release signing
+      - name: Verify V35 release signing configuration
         shell: bash
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
 
-          test -n "${KEY_ALIAS:-}" || {
-            echo "::error::KEY_ALIAS non récupéré depuis le keystore."
+          grep -Fq 'signingConfigs' "$GRADLE_FILE" || {
+            echo "::error::signingConfigs absent du vrai app/build.gradle V35."
             exit 1
           }
 
-          python3 - "$GRADLE_FILE" "$KEYSTORE_FILE" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" <<'PY'
-          import sys
-          from pathlib import Path
+          grep -Fq 'release-keystore.jks' "$GRADLE_FILE" || {
+            echo "::error::Le Gradle V35 n'utilise pas release-keystore.jks."
+            exit 1
+          }
 
-          path = Path(sys.argv[1])
-          keystore = sys.argv[2]
-          store_password = sys.argv[3]
-          alias_name = sys.argv[4]
-          key_password = sys.argv[5]
+          grep -Fq 'ANDROID_KEYSTORE_PASSWORD' "$GRADLE_FILE" || {
+            echo "::error::ANDROID_KEYSTORE_PASSWORD absent du Gradle V35."
+            exit 1
+          }
 
-          text = path.read_text(encoding="utf-8")
+          grep -Fq 'ANDROID_KEY_ALIAS' "$GRADLE_FILE" || {
+            echo "::error::ANDROID_KEY_ALIAS absent du Gradle V35."
+            exit 1
+          }
 
-          if "signingConfigs" not in text:
-              marker = "android {"
-              signing = f'''android {{
-              signingConfigs {{
-                  release {{
-                      storeFile file("{keystore}")
-                      storePassword "{store_password}"
-                      keyAlias "{alias_name}"
-                      keyPassword "{key_password}"
-                  }}
-              }}
-          '''
-              if marker not in text:
-                  raise SystemExit("android block introuvable")
-              text = text.replace(marker, signing, 1)
+          grep -Fq 'ANDROID_KEY_PASSWORD' "$GRADLE_FILE" || {
+            echo "::error::ANDROID_KEY_PASSWORD absent du Gradle V35."
+            exit 1
+          }
 
-          if "signingConfig signingConfigs.release" not in text:
-              build_types = "buildTypes {"
-              replacement = '''buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-          '''
-              if build_types in text:
-                  text = text.replace(build_types, replacement, 1)
-              else:
-                  raise SystemExit("buildTypes introuvable")
+          test -f "$KEYSTORE_FILE" || {
+            echo "::error::release-keystore.jks introuvable."
+            exit 1
+          }
 
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          echo "Configuration signing Gradle : OK"
+          echo "Gradle signingConfig V35 : OK"
+          echo "release-keystore.jks : OK"
+          echo "ANDROID_KEYSTORE_PASSWORD : OK"
+          echo "ANDROID_KEY_ALIAS : OK"
+          echo "ANDROID_KEY_PASSWORD : OK"
 
       # =========================================================
       # BUILD APK RELEASE
