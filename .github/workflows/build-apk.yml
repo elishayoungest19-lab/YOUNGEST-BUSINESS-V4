@@ -359,7 +359,6 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
 
@@ -378,11 +377,6 @@ jobs:
             exit 1
           }
 
-          test -n "$KEY_ALIAS" || {
-            echo "::error::KEY_ALIAS manquant."
-            exit 1
-          }
-
           KEYSTORE_FILE="$RUNNER_TEMP/youngest-release.keystore"
 
           echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
@@ -392,10 +386,23 @@ jobs:
             exit 1
           }
 
+          # Recuperation automatique de l'alias du keystore.
+          KEY_ALIAS="$(
+            keytool -list -v               -keystore "$KEYSTORE_FILE"               -storepass "$KEYSTORE_PASSWORD"               2>/dev/null |
+              awk -F': ' '/^Alias name:/{print $2; exit}'
+          )"
+
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "::error::Impossible de récupérer l'alias du keystore."
+            echo "Vérifie KEYSTORE_BASE64 et KEYSTORE_PASSWORD."
+            exit 1
+          fi
+
           echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
 
           echo "Keystore : OK"
-          echo "Alias : $KEY_ALIAS"
+          echo "Alias du keystore récupéré automatiquement : $KEY_ALIAS"
 
       # =========================================================
       # INJECTION SIGNATURE DANS GRADLE
@@ -405,11 +412,15 @@ jobs:
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           set -euo pipefail
 
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+
+          test -n "${KEY_ALIAS:-}" || {
+            echo "::error::KEY_ALIAS non récupéré depuis le keystore."
+            exit 1
+          }
 
           python3 - "$GRADLE_FILE" "$KEYSTORE_FILE" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" <<'PY'
           import sys
