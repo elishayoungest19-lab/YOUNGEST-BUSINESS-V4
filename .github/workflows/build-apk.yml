@@ -204,7 +204,7 @@ jobs:
             'LUMICASH_AGENT_1 = "ELISHA YOUNGEST"' \
             'LUMICASH_AGENT_2 = "BLESSING"' \
             'LUMICASH_COLLECTION = "yb_lumicash_journal"' \
-            'Rapport journalier — aujourd'hui' \
+            "Rapport journalier — aujourd'hui" \
             'Rapport mensuel — ce mois' \
             'Numéro du client' \
             'Frais de dépôt' \
