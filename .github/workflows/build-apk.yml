@@ -44,6 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           sdkmanager \
             "platform-tools" \
             "platforms;android-35" \
@@ -66,6 +67,7 @@ jobs:
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
+
           ZIP_NAME="YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE-source.zip"
 
           ZIP_PATH="$(find "$ROOT" -type f -name "$ZIP_NAME" -print -quit)"
@@ -82,6 +84,7 @@ jobs:
           unzip -t "$ZIP_PATH"
 
           DEST="$RUNNER_TEMP/v38-source"
+
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
@@ -232,7 +235,7 @@ jobs:
           echo "RAPPORT MENSUEL -> VRAI PDF : OK"
 
       # ============================================================
-      # VERIFY JOURNAL LUMICASH V38
+      # VERIFY JOURNAL LUMICASH
       # ============================================================
       - name: Verify Journal Lumicash V38
         shell: bash
@@ -498,7 +501,6 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
         run: |
           set -euo pipefail
 
@@ -611,7 +613,7 @@ jobs:
           echo "SIGNATURE : OK"
 
       # ============================================================
-      # PREPARE ARTIFACT
+      # PREPARE FINAL V38 ARTIFACT
       # ============================================================
       - name: Prepare final V38 artifact
         shell: bash
@@ -620,12 +622,94 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+
+          test -s "$APK" || {
+            echo "::error::APK introuvable avant préparation Artifact."
+            exit 1
+          }
+
           cp \
-            "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" \
+            "$APK" \
             "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
 
           sha256sum \
             "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-      # ===============================================
+          echo "Contenu de release-output :"
+          ls -lah "$GITHUB_WORKSPACE/release-output"
+
+          test -s \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
+
+          test -s \
+            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+          echo "ARTIFACT PREPARE : OK"
+
+      # ============================================================
+      # UPLOAD ARTIFACT
+      # ============================================================
+      - name: Upload signed V38 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 30
+
+      # ============================================================
+      # VERIFY ARTIFACT UPLOAD
+      # ============================================================
+      - name: Verify artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
+
+          test -s \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
+
+          echo "ARTIFACT APK : UPLOADE"
+          echo "NOM : YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE"
+          echo "APK : PRESENT"
+          echo "SHA256 : PRESENT"
+
+      # ============================================================
+      # FINAL V38 VERIFICATION
+      # ============================================================
+      - name: Final V38 verification
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo "       YOUNGEST'S BUSINESS V38"
+          echo "=============================================="
+          echo "ADMIN CARDS : PRESERVEES"
+          echo "RAPPORT MENSUEL -> VRAI PDF : VERIFIE"
+          echo "JOURNAL LUMICASH : VERIFIE"
+          echo "AGENT 1 : ELISHA YOUNGEST -> PROTEGE"
+          echo "AGENT 2 : BLESSING -> PROTEGE"
+          echo "NUMERO CLIENT : VERIFIE"
+          echo "NOM BENEFICIAIRE : VERIFIE"
+          echo "MONTANT : VERIFIE"
+          echo "FRAIS DE DEPOT : VERIFIE"
+          echo "DATE : VERIFIE"
+          echo "AGENT : VERIFIE"
+          echo "HISTORIQUE : VERIFIE"
+          echo "RAPPORT JOURNALIER : VERIFIE"
+          echo "RAPPORT MENSUEL : VERIFIE"
+          echo "EXPORT PDF : VERIFIE"
+          echo "FIREBASE LUMICASH : VERIFIE"
+          echo "CLIENT -> ADMIN : PRESERVE"
+          echo "ADMIN -> CLIENT : PRESERVE"
+          echo "FIRESTORE RULES : VERIFIEES"
+          echo "NOTIFICATIONS : VERIFIEES"
+          echo "APK SIGNE : VERIFIE"
+          echo "ARTIFACT : UPLOADE"
+          echo "VERSION : 38 / 1.31.0"
+          echo "=============================================="
+          echo "BUILD V38 TERMINE AVEC SUCCES."
+          echo "=============================================="
