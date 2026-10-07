@@ -16,27 +16,33 @@ jobs:
 
     steps:
 
-      # =========================================================
+      # ============================================================
       # CHECKOUT
-      # =========================================================
+      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # =========================================================
+
+      # ============================================================
       # JAVA 17
-      # =========================================================
+      # ============================================================
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # =========================================================
+
+      # ============================================================
       # ANDROID SDK
-      # =========================================================
+      # ============================================================
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+
+      # ============================================================
+      # ANDROID SDK PACKAGES
+      # ============================================================
       - name: Install Android SDK packages
         shell: bash
         run: |
@@ -47,60 +53,64 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      # =========================================================
+
+      # ============================================================
       # GRADLE 8.9
-      # =========================================================
+      # ============================================================
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # =========================================================
-      # RECHERCHE EXACTE DU ZIP V37
-      # =========================================================
-      - name: Find exact V37 source ZIP
+
+      # ============================================================
+      # FIND V37 SOURCE ZIP
+      #
+      # Accepts:
+      # 1. YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH-source.zip
+      # 2. YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH-source-FIXED.zip
+      # ============================================================
+      - name: Find V37 source ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH-source.zip"
+          ZIP_PATH=""
 
-          echo "=============================================="
-          echo "       RECHERCHE DU VRAI SOURCE V37"
-          echo "=============================================="
+          OFFICIAL="$ROOT/YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH-source.zip"
 
-          ZIP_PATH="$(
-            find "$ROOT" \
-              -type f \
-              -name "$ZIP_NAME" \
-              -print \
-              -quit
-          )"
+          FIXED="$ROOT/YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH-source-FIXED.zip"
 
-          if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP V37 exact est introuvable."
-            echo ""
-            echo "ZIP attendu :"
-            echo "$ZIP_NAME"
-            echo ""
-            echo "ZIP actuellement présents :"
-            find "$ROOT" \
-              -type f \
-              -iname "*.zip" \
-              -print \
-              | sort || true
+          if [ -f "$OFFICIAL" ]; then
+
+            ZIP_PATH="$OFFICIAL"
+
+            echo "ZIP V37 OFFICIEL TROUVE : $ZIP_PATH"
+
+          elif [ -f "$FIXED" ]; then
+
+            ZIP_PATH="$FIXED"
+
+            echo "ZIP V37 FIXED TROUVE : $ZIP_PATH"
+
+          else
+
+            echo "::error::Aucun ZIP source V37 trouvé."
+
+            echo "ZIP disponibles dans le dépôt :"
+
+            find "$ROOT" -type f -iname '*.zip' -print | sort || true
+
             exit 1
+
           fi
 
-          echo ""
-          echo "ZIP V37 EXACT TROUVE :"
-          echo "$ZIP_PATH"
+          echo "ZIP V37 UTILISE : $ZIP_PATH"
 
-          echo ""
           echo "=============================================="
-          echo "       TEST DE L'ARCHIVE"
+          echo "TEST INTEGRITE DU ZIP V37"
           echo "=============================================="
 
           unzip -t "$ZIP_PATH"
@@ -108,37 +118,18 @@ jobs:
           DEST="$RUNNER_TEMP/v37-source"
 
           rm -rf "$DEST"
-          mkdir -p "$DEST"
 
-          echo ""
-          echo "Extraction..."
+          mkdir -p "$DEST"
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          echo "Extraction terminée."
-
-          SETTINGS="$(
-            find "$DEST" \
-              -type f \
-              \( \
-                -name "settings.gradle" \
-                -o \
-                -name "settings.gradle.kts" \
-              \) \
-              -print \
-              -quit
-          )"
+          SETTINGS="$(find "$DEST" -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
+          \) -print -quit)"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable."
-
-            find "$DEST" \
-              -maxdepth 6 \
-              -type f \
-              -print \
-              | sort \
-              | head -300
-
+            echo "::error::settings.gradle introuvable dans le ZIP V37."
             exit 1
           fi
 
@@ -146,87 +137,89 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo ""
-          echo "PROJET ANDROID V37 :"
-          echo "$PROJECT_DIR"
+          echo "=============================================="
+          echo "ZIP V37 : OK"
+          echo "PROJECT_DIR : $PROJECT_DIR"
+          echo "=============================================="
 
-      # =========================================================
-      # IDENTITE EXACTE V37
-      # =========================================================
+
+      # ============================================================
+      # VERIFY V37 IDENTITY
+      # ============================================================
       - name: Verify exact V37 identity
         shell: bash
         run: |
           set -euo pipefail
 
-          GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+          GRADLE="$PROJECT_DIR/app/build.gradle"
 
-          test -f "$GRADLE_FILE" || {
+          test -f "$GRADLE" || {
             echo "::error::app/build.gradle introuvable."
             exit 1
           }
 
-          grep -Eq \
-            'versionCode[[:space:]]+37([[:space:]]|$)' \
-            "$GRADLE_FILE" || {
-              echo "::error::versionCode 37 absent."
-              exit 1
-            }
+          grep -Eq 'versionCode[[:space:]]+37([[:space:]]|$)' "$GRADLE" || {
+            echo "::error::versionCode 37 absent."
+            exit 1
+          }
 
-          grep -Eq \
-            'versionName[[:space:]]+["'\'']1\.30\.0["'\'']' \
-            "$GRADLE_FILE" || {
-              echo "::error::versionName 1.30.0 absent."
-              exit 1
-            }
+          grep -Fq "versionName '1.30.0'" "$GRADLE" || {
+            echo "::error::versionName 1.30.0 absent."
+            exit 1
+          }
 
-          grep -Fq \
-            "com.aistudio.youngestbiz.mbkz" \
-            "$GRADLE_FILE" || {
-              echo "::error::applicationId/namespace incorrect."
-              exit 1
-            }
+          grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE" || {
+            echo "::error::applicationId incorrect."
+            exit 1
+          }
 
-          echo "versionCode 37 : OK"
-          echo "versionName 1.30.0 : OK"
-          echo "applicationId : OK"
-          echo "namespace : OK"
+          grep -Fq "namespace 'com.aistudio.youngestbiz.mbkz'" "$GRADLE" || {
+            echo "::error::namespace incorrect."
+            exit 1
+          }
 
-      # =========================================================
-      # FICHIERS PRINCIPAUX
-      # =========================================================
+          echo "V37 / 1.30.0 / applicationId : OK"
+
+
+      # ============================================================
+      # VERIFY PROJECT FILES
+      # ============================================================
       - name: Verify V37 project files
         shell: bash
         run: |
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
           SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+
           RULES="$PROJECT_DIR/firestore.rules"
+
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
+
           GOOGLE="$PROJECT_DIR/app/google-services.json"
 
-          for FILE in \
+          for file in \
             "$MAIN" \
             "$SERVICE" \
             "$RULES" \
             "$FUNCTIONS" \
             "$GOOGLE"
           do
-            test -f "$FILE" || {
-              echo "::error::Fichier manquant : $FILE"
+
+            test -f "$file" || {
+              echo "::error::Fichier manquant : $file"
               exit 1
             }
+
           done
 
-          echo "MainActivity.java : OK"
-          echo "AppNotificationService.java : OK"
-          echo "firestore.rules : OK"
-          echo "functions/index.js : OK"
-          echo "google-services.json : OK"
+          echo "Fichiers Firebase/Android : OK"
 
-      # =========================================================
-      # PROTECTION INTERFACE EXISTANTE
-      # =========================================================
+
+      # ============================================================
+      # PRESERVE ADMIN CARDS
+      # ============================================================
       - name: Verify existing Admin Cards interface
         shell: bash
         run: |
@@ -234,138 +227,31 @@ jobs:
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          for LABEL in \
+          for label in \
             'TABLEAU DE BORD' \
             'GESTION DES CLIENTS' \
             'GESTION DES PRÊTS' \
             'REMBOURSEMENTS' \
             'DEMANDES DE PRÊTS CLIENTS' \
-            'CONTACTEZ-NOUS'
+            'CONTACTEZ-NOUS' \
+            'JOURNAL LUMICASH'
           do
-            grep -Fq "$LABEL" "$MAIN" || {
-              echo "::error::Interface existante modifiée ou carte absente : $LABEL"
+
+            grep -Fq "$label" "$MAIN" || {
+
+              echo "::error::Carte $label absente."
+
               exit 1
             }
 
-            echo "$LABEL : OK"
           done
 
-          echo ""
-          echo "INTERFACE ADMIN EXISTANTE PRESERVEE."
+          echo "INTERFACE ADMIN CARDS PRESERVEE : OK"
 
-      # =========================================================
-      # JOURNAL LUMICASH PRESENT
-      # =========================================================
-      - name: Verify Journal Lumicash V37
-        shell: bash
-        run: |
-          set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          echo "=============================================="
-          echo "       VERIFICATION JOURNAL LUMICASH"
-          echo "=============================================="
-
-          # Titre
-          grep -Fq "JOURNAL LUMICASH" "$MAIN" || {
-            echo "::error::Titre JOURNAL LUMICASH absent."
-            exit 1
-          }
-
-          # Collection Firebase
-          grep -Fq "yb_lumicash_journal" "$MAIN" || {
-            echo "::error::Collection Firebase Lumicash absente."
-            exit 1
-          }
-
-          # Agent 1
-          grep -Eq \
-            'LUMICASH_AGENT_1[^;]*ELISHA YOUNGEST|ELISHA YOUNGEST' \
-            "$MAIN" || {
-              echo "::error::Agent 1 ELISHA YOUNGEST absent."
-              exit 1
-            }
-
-          # Agent 2
-          grep -Eq \
-            'LUMICASH_AGENT_2[^;]*BLESSING|BLESSING' \
-            "$MAIN" || {
-              echo "::error::Agent 2 BLESSING absent."
-              exit 1
-            }
-
-          # Date
-          grep -Eiq \
-            'date|selectedDate|transactionDate' \
-            "$MAIN" || {
-              echo "::error::Champ/date du Journal absent."
-              exit 1
-            }
-
-          # Numéro client
-          grep -Eiq \
-            'Numéro du client|numero.*client|client.*numero|phone' \
-            "$MAIN" || {
-              echo "::error::Numéro du client absent."
-              exit 1
-            }
-
-          # Montant
-          grep -Eiq \
-            'Montant|amount' \
-            "$MAIN" || {
-              echo "::error::Montant absent."
-              exit 1
-            }
-
-          # Frais
-          grep -Eiq \
-            'Frais de dépôt|frais.*depot|deposit.*fee|fee' \
-            "$MAIN" || {
-              echo "::error::Frais de dépôt absent."
-              exit 1
-            }
-
-          # Historique
-          grep -Eiq \
-            'HISTORIQUE DES TRANSACTIONS|historique.*transaction|transactions' \
-            "$MAIN" || {
-              echo "::error::Historique des transactions absent."
-              exit 1
-            }
-
-          # Rapport journalier / mensuel
-          grep -Eiq \
-            'Rapport journalier|journalier|daily' \
-            "$MAIN" || {
-              echo "::error::Rapport journalier absent."
-              exit 1
-            }
-
-          grep -Eiq \
-            'Rapport mensuel|mensuel|monthly' \
-            "$MAIN" || {
-              echo "::error::Rapport mensuel absent."
-              exit 1
-            }
-
-          echo ""
-          echo "Titre : OK"
-          echo "Agent 1 : ELISHA YOUNGEST : OK"
-          echo "Agent 2 : BLESSING : OK"
-          echo "Date : OK"
-          echo "Numéro client : OK"
-          echo "Montant : OK"
-          echo "Frais dépôt : OK"
-          echo "Historique : OK"
-          echo "Rapport journalier : OK"
-          echo "Rapport mensuel : OK"
-          echo "Firebase collection : OK"
-
-      # =========================================================
-      # EXPORT PDF DU RAPPORT MENSUEL DE PRETS
-      # =========================================================
+      # ============================================================
+      # VERIFY REAL MONTHLY PDF EXPORT
+      # ============================================================
       - name: Verify monthly report real PDF export
         shell: bash
         run: |
@@ -373,193 +259,202 @@ jobs:
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          echo "=============================================="
-          echo "       RAPPORT MENSUEL PDF"
-          echo "=============================================="
+          for check in \
+            'CREATE_REPORT_PDF' \
+            'pendingReportPdfText' \
+            'pendingReportPdfName' \
+            'ACTION_CREATE_DOCUMENT' \
+            'application/pdf' \
+            'writeTextPdf(uri,pendingReportPdfText' \
+            'GÉNÉRER / EXPORTER CE RAPPORT'
+          do
 
-          # Le vrai sélecteur de fichier Android
-          grep -Fq \
-            "ACTION_CREATE_DOCUMENT" \
-            "$MAIN" || {
-              echo "::error::ACTION_CREATE_DOCUMENT absent."
+            grep -Fq "$check" "$MAIN" || {
+
+              echo "::error::Export PDF du rapport mensuel incomplet : $check"
+
               exit 1
             }
 
-          # Type PDF
-          grep -Fq \
-            "application/pdf" \
-            "$MAIN" || {
-              echo "::error::MIME application/pdf absent."
-              exit 1
-            }
+          done
 
-          # Fonction d'écriture PDF
-          grep -Fq \
-            "writeTextPdf" \
-            "$MAIN" || {
-              echo "::error::Fonction d'écriture PDF absente."
-              exit 1
-            }
+          if grep -Fq 'Intent.ACTION_SEND' "$MAIN"; then
 
-          # Texte du rapport
-          grep -Eiq \
-            'pendingReportPdfText|reportPdfText|rapport.*pdf' \
-            "$MAIN" || {
-              echo "::error::Données du rapport PDF absentes."
-              exit 1
-            }
+            echo "::error::Ancien export texte Intent.ACTION_SEND encore présent dans MainActivity."
 
-          # Nom du fichier PDF
-          grep -Eiq \
-            'pendingReportPdfName|reportPdfName|REPORT.*PDF' \
-            "$MAIN" || {
-              echo "::error::Nom du rapport PDF absent."
-              exit 1
-            }
+            exit 1
 
-          # Bouton d'export
-          grep -Eiq \
-            'GÉNÉRER.*EXPORTER|EXPORTER.*RAPPORT|EXPORT.*RAPPORT' \
-            "$MAIN" || {
-              echo "::error::Bouton d'export du rapport absent."
-              exit 1
-            }
+          fi
 
-          echo ""
-          echo "ACTION_CREATE_DOCUMENT : OK"
-          echo "application/pdf : OK"
-          echo "writeTextPdf : OK"
-          echo "Données PDF : OK"
-          echo "Nom PDF : OK"
-          echo "Export rapport : OK"
+          echo "RAPPORTS MENSUELS -> VRAI PDF : OK"
 
-      # =========================================================
-      # CHAT CLIENT -> ADMIN : PRESERVATION
-      # =========================================================
-      - name: Verify client chat preservation
+
+      # ============================================================
+      # VERIFY JOURNAL LUMICASH
+      # ============================================================
+      - name: Verify Journal Lumicash V37
         shell: bash
         run: |
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          for CHECK in \
+          RULES="$PROJECT_DIR/firestore.rules"
+
+          for check in \
+            'lumicashJournalPage()' \
+            'lumicashAgentPage(' \
+            'lumicashForm(' \
+            'LUMICASH_AGENT_1 = "ELISHA YOUNGEST"' \
+            'LUMICASH_AGENT_2 = "BLESSING"' \
+            'LUMICASH_COLLECTION = "yb_lumicash_journal"' \
+            "Rapport journalier — aujourd'hui" \
+            'Rapport mensuel — ce mois' \
+            'Numéro du client' \
+            'Frais de dépôt' \
+            'HISTORIQUE DES TRANSACTIONS' \
+            'EXPORTER LE RAPPORT EN PDF' \
+            'uploadLumicashEntry' \
+            'loadLumicashCloud'
+          do
+
+            grep -Fq "$check" "$MAIN" || {
+
+              echo "::error::Fonction Journal Lumicash manquante : $check"
+
+              exit 1
+            }
+
+          done
+
+          grep -Fq 'match /yb_lumicash_journal/' "$RULES" || {
+
+            echo "::error::Règle Firestore Journal Lumicash absente."
+
+            exit 1
+          }
+
+          grep -Fq 'allow read, create, update, delete: if isAdmin();' "$RULES" || {
+
+            echo "::error::Accès Firestore Journal Lumicash incorrect."
+
+            exit 1
+          }
+
+          echo "JOURNAL LUMICASH V37 : OK"
+
+
+      # ============================================================
+      # PRESERVE CLIENT CHAT DELIVERY
+      # ============================================================
+      - name: Verify V37 client chat delivery preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          for check in \
             'persistPendingChatDraft' \
             'openChatEntry()' \
             'requestChatPhoneNumber()' \
             'signInAnonymously' \
             'KEY_PENDING_CHAT_PHONE' \
             'openOrCreateClientConversation()' \
+            'whereEqualTo("ownerUid"' \
             'createConversationAndSendDraft' \
             'conversation.set(c)' \
-            'message.set(msg)'
+            'message.set(msg)' \
+            'msg.put("ownerUid",user.getUid())'
           do
-            grep -Fq "$CHECK" "$MAIN" || {
-              echo "::error::Chat client manquant : $CHECK"
+
+            grep -Fq "$check" "$MAIN" || {
+
+              echo "::error::$check absent."
+
               exit 1
             }
+
           done
 
-          grep -Eiq \
-            'ownerUid.*user\.getUid|user\.getUid.*ownerUid' \
-            "$MAIN" || {
-              echo "::error::ownerUid du message client absent."
-              exit 1
-            }
+          if grep -Fq 'transaction.get(conversation)' "$MAIN"; then
 
-          echo "CLIENT -> ADMIN : PRESERVE"
+            echo "::error::Ancienne transaction client encore présente."
 
-      # =========================================================
-      # CHAT ADMIN -> CLIENT : PRESERVATION
-      # =========================================================
-      - name: Verify admin chat preservation
+            exit 1
+
+          fi
+
+          echo "ENVOI CLIENT DIRECT + ownerUid : OK"
+
+
+      # ============================================================
+      # PRESERVE ADMIN REPLY
+      # ============================================================
+      - name: Verify V37 admin reply delivery preservation
         shell: bash
         run: |
           set -euo pipefail
 
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-          grep -Fq \
+          for check in \
             'adminChatInbox()' \
-            "$MAIN" || {
-              echo "::error::Admin Chat absent."
+            'adminConversation.get()' \
+            'm.put("ownerUid",ownerUid)' \
+            'm.put("senderRole","admin")'
+          do
+
+            grep -Fq "$check" "$MAIN" || {
+
+              echo "::error::$check absent dans le code V37."
+
               exit 1
             }
 
-          grep -Eiq \
-            'senderRole.*admin' \
-            "$MAIN" || {
-              echo "::error::senderRole admin absent."
-              exit 1
-            }
+          done
 
-          grep -Eiq \
-            'ownerUid' \
-            "$MAIN" || {
-              echo "::error::ownerUid absent du système Chat."
-              exit 1
-            }
+          echo "REPONSE ADMIN AVEC ownerUid : OK"
 
-          echo "ADMIN -> CLIENT : PRESERVE"
 
-      # =========================================================
-      # FIRESTORE CHAT
-      # =========================================================
-      - name: Verify Firestore chat rules
+      # ============================================================
+      # FIRESTORE CHAT RULES
+      # ============================================================
+      - name: Verify V37 Firestore chat rules
         shell: bash
         run: |
           set -euo pipefail
 
           RULES="$PROJECT_DIR/firestore.rules"
 
-          for CHECK in \
+          for check in \
             'function isSignedIn()' \
             'function isAdmin()' \
             'StxrZBDeUodj7YVPmXRA2AbWcUF2' \
             'elishayoungest19@gmail.com' \
             'match /yb_chat_conversations/' \
             'match /messages/{messageId}' \
-            'senderUid' \
-            'senderRole' \
-            'ownerUid'
+            'request.resource.data.senderUid == request.auth.uid' \
+            'request.resource.data.ownerUid == request.auth.uid' \
+            'request.resource.data.senderRole == "client"' \
+            'request.resource.data.senderRole == "admin"'
           do
-            grep -Fq "$CHECK" "$RULES" || {
-              echo "::error::Règle Chat absente : $CHECK"
+
+            grep -Fq "$check" "$RULES" || {
+
+              echo "::error::Rule manquante : $check"
+
               exit 1
             }
+
           done
 
-          echo "FIRESTORE CHAT : OK"
+          echo "RULES CHAT V37 : OK"
 
-      # =========================================================
-      # FIRESTORE JOURNAL LUMICASH
-      # =========================================================
-      - name: Verify Firestore Lumicash rules
-        shell: bash
-        run: |
-          set -euo pipefail
 
-          RULES="$PROJECT_DIR/firestore.rules"
-
-          grep -Fq \
-            'yb_lumicash_journal' \
-            "$RULES" || {
-              echo "::error::Collection Lumicash absente des règles."
-              exit 1
-            }
-
-          grep -Fq \
-            'isAdmin()' \
-            "$RULES" || {
-              echo "::error::isAdmin absent des règles."
-              exit 1
-            }
-
-          echo "FIRESTORE JOURNAL LUMICASH : OK"
-
-      # =========================================================
-      # NOTIFICATIONS
-      # =========================================================
+      # ============================================================
+      # FIREBASE NOTIFICATIONS
+      # ============================================================
       - name: Verify Firebase notifications
         shell: bash
         run: |
@@ -569,47 +464,49 @@ jobs:
 
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
 
-          grep -Fq \
-            'FirebaseMessagingService' \
-            "$SERVICE" || {
-              echo "::error::FirebaseMessagingService absent."
-              exit 1
-            }
+          grep -Fq 'FirebaseMessagingService' "$SERVICE" || {
 
-          grep -Fq \
-            'onMessageReceived' \
-            "$SERVICE" || {
-              echo "::error::onMessageReceived absent."
-              exit 1
-            }
+            echo "::error::FirebaseMessagingService absent."
 
-          grep -Fq \
-            'onDocumentCreated' \
-            "$FUNCTIONS" || {
-              echo "::error::onDocumentCreated absent."
-              exit 1
-            }
+            exit 1
+          }
 
-          grep -Fq \
-            'notifyClientWhenAdminReplies' \
-            "$FUNCTIONS" || {
-              echo "::error::notifyClientWhenAdminReplies absent."
-              exit 1
-            }
+          grep -Fq 'onMessageReceived' "$SERVICE" || {
+
+            echo "::error::onMessageReceived absent."
+
+            exit 1
+          }
+
+          grep -Fq 'onDocumentCreated' "$FUNCTIONS" || {
+
+            echo "::error::onDocumentCreated absent."
+
+            exit 1
+          }
+
+          grep -Fq 'notifyClientWhenAdminReplies' "$FUNCTIONS" || {
+
+            echo "::error::notifyClientWhenAdminReplies absent."
+
+            exit 1
+          }
 
           node --check "$FUNCTIONS"
 
           echo "NOTIFICATIONS FIREBASE : OK"
 
-      # =========================================================
-      # SIGNATURE
-      # =========================================================
+
+      # ============================================================
+      # CONFIGURE RELEASE SIGNING
+      # ============================================================
       - name: Configure release signing
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
         run: |
           set -euo pipefail
 
@@ -630,117 +527,53 @@ jobs:
 
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
 
-          echo "$KEYSTORE_BASE64" \
-            | base64 --decode \
-            > "$KEYSTORE_FILE"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
 
           test -s "$KEYSTORE_FILE" || {
-            echo "::error::Keystore vide ou invalide."
+            echo "::error::Keystore vide/invalide."
             exit 1
           }
 
           chmod 600 "$KEYSTORE_FILE"
 
-          KEY_ALIAS="$(
-            keytool -list -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass "$KEYSTORE_PASSWORD" \
-              2>/dev/null \
-              | awk -F': ' '/^Alias name:/{print $2; exit}'
-          )"
+          KEY_ALIAS="$(keytool -list -v \
+            -keystore "$KEYSTORE_FILE" \
+            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | awk -F': ' '/^Alias name:/{print $2; exit}')"
 
           test -n "$KEY_ALIAS" || {
-            echo "::error::Alias du keystore introuvable."
+
+            echo "::error::Impossible de récupérer l'alias du keystore."
+
             exit 1
           }
 
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
 
           echo "Keystore : OK"
-          echo "Alias : récupéré automatiquement"
 
-      # =========================================================
-      # VERIFICATION SIGNATURE GRADLE
-      # =========================================================
-      - name: Verify release signing configuration
-        shell: bash
-        run: |
-          set -euo pipefail
+          echo "Alias récupéré automatiquement : $KEY_ALIAS"
 
-          GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
 
-          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
-
-          grep -Fq \
-            'signingConfigs' \
-            "$GRADLE_FILE" || {
-              echo "::error::signingConfigs absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'release-keystore.jks' \
-            "$GRADLE_FILE" || {
-              echo "::error::release-keystore.jks absent du Gradle."
-              exit 1
-            }
-
-          grep -Fq \
-            'ANDROID_KEYSTORE_PASSWORD' \
-            "$GRADLE_FILE" || {
-              echo "::error::ANDROID_KEYSTORE_PASSWORD absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'ANDROID_KEY_ALIAS' \
-            "$GRADLE_FILE" || {
-              echo "::error::ANDROID_KEY_ALIAS absent."
-              exit 1
-            }
-
-          grep -Fq \
-            'ANDROID_KEY_PASSWORD' \
-            "$GRADLE_FILE" || {
-              echo "::error::ANDROID_KEY_PASSWORD absent."
-              exit 1
-            }
-
-          test -f "$KEYSTORE_FILE" || {
-            echo "::error::release-keystore.jks introuvable."
-            exit 1
-          }
-
-          echo "SIGNING CONFIGURATION : OK"
-
-      # =========================================================
-      # BUILD APK
-      # =========================================================
+      # ============================================================
+      # BUILD SIGNED APK
+      # ============================================================
       - name: Build signed V37 APK
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
 
-          echo "=============================================="
-          echo "          BUILD APK V37"
-          echo "=============================================="
+          gradle --no-daemon clean :app:assembleRelease --stacktrace
 
-          gradle --version
 
-          gradle \
-            --no-daemon \
-            clean \
-            :app:assembleRelease \
-            --stacktrace
-
-      # =========================================================
-      # VERIFICATION APK
-      # =========================================================
+      # ============================================================
+      # VERIFY APK
+      # ============================================================
       - name: Verify generated V37 APK
         shell: bash
         run: |
@@ -749,21 +582,11 @@ jobs:
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
           test -s "$APK" || {
+
             echo "::error::APK release introuvable."
-            find "$PROJECT_DIR/app/build/outputs" \
-              -type f \
-              -print || true
+
             exit 1
           }
-
-          echo "APK trouve : $APK"
-
-          ls -lh "$APK"
-
-          echo ""
-          echo "=============================================="
-          echo "       VERIFICATION SIGNATURE"
-          echo "=============================================="
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify \
@@ -771,78 +594,48 @@ jobs:
             --print-certs \
             "$APK"
 
-          echo ""
-          echo "=============================================="
-          echo "       VERIFICATION PACKAGE"
-          echo "=============================================="
-
           BADGING="$(
             "$ANDROID_HOME/build-tools/35.0.0/aapt" \
-              dump badging \
-              "$APK"
+            dump badging \
+            "$APK"
           )"
 
-          echo "$BADGING"
+          echo "$BADGING" | grep -Fq \
+            "package: name='com.aistudio.youngestbiz.mbkz'" || exit 1
 
-          echo "$BADGING" \
-            | grep -Fq \
-              "package: name='com.aistudio.youngestbiz.mbkz'" || {
-                echo "::error::Package APK incorrect."
-                exit 1
-              }
+          echo "$BADGING" | grep -Fq \
+            "versionCode='37'" || exit 1
 
-          echo "$BADGING" \
-            | grep -Fq \
-              "versionCode='37'" || {
-                echo "::error::versionCode APK incorrect."
-                exit 1
-              }
+          echo "$BADGING" | grep -Fq \
+            "versionName='1.30.0'" || exit 1
 
-          echo "$BADGING" \
-            | grep -Fq \
-              "versionName='1.30.0'" || {
-                echo "::error::versionName APK incorrect."
-                exit 1
-              }
+          echo "APK package/version/signature : OK"
 
-          echo ""
-          echo "PACKAGE : OK"
-          echo "VERSION CODE 37 : OK"
-          echo "VERSION NAME 1.30.0 : OK"
-          echo "SIGNATURE : OK"
 
-      # =========================================================
-      # ARTIFACT FINAL
-      # =========================================================
+      # ============================================================
+      # PREPARE FINAL ARTIFACT
+      # ============================================================
       - name: Prepare final V37 artifact
         shell: bash
         run: |
           set -euo pipefail
 
-          OUTPUT="$GITHUB_WORKSPACE/release-output"
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
 
-          rm -rf "$OUTPUT"
-          mkdir -p "$OUTPUT"
+          cp \
+            "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH.apk"
 
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH.apk" \
+            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-          FINAL="$OUTPUT/YOUNGEST-BUSINESS-V37-REPORTS-PDF-JOURNAL-LUMICASH.apk"
+          echo "Artifact V37 préparé."
 
-          cp "$APK" "$FINAL"
 
-          sha256sum "$FINAL" > "$OUTPUT/SHA256SUMS.txt"
-
-          test -s "$FINAL"
-
-          echo ""
-          echo "APK FINAL :"
-          echo "$FINAL"
-
-          ls -lh "$OUTPUT"
-
-      # =========================================================
+      # ============================================================
       # UPLOAD ARTIFACT
-      # =========================================================
+      # ============================================================
       - name: Upload signed V37 APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -851,34 +644,49 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # =========================================================
-      # RESUME FINAL
-      # =========================================================
+
+      # ============================================================
+      # FINAL VERIFICATION
+      # ============================================================
       - name: Final V37 verification
         shell: bash
         run: |
-          echo ""
           echo "=============================================="
           echo "       YOUNGEST'S BUSINESS V37"
           echo "=============================================="
-          echo ""
+
           echo "ADMIN CARDS : PRESERVEES"
+
           echo "RAPPORT MENSUEL -> VRAI PDF : VERIFIE"
+
           echo "JOURNAL LUMICASH : VERIFIE"
+
           echo "AGENT 1 : ELISHA YOUNGEST"
+
           echo "AGENT 2 : BLESSING"
+
           echo "RAPPORT JOURNALIER : VERIFIE"
+
           echo "RAPPORT MENSUEL LUMICASH : VERIFIE"
+
           echo "HISTORIQUE : VERIFIE"
+
           echo "EXPORT PDF : VERIFIE"
+
           echo "FIREBASE LUMICASH : VERIFIE"
+
           echo "CLIENT -> ADMIN : PRESERVE"
+
           echo "ADMIN -> CLIENT : PRESERVE"
+
           echo "FIRESTORE RULES : VERIFIEES"
+
           echo "NOTIFICATIONS : VERIFIEES"
+
           echo "APK SIGNE : VERIFIE"
+
           echo "VERSION : 37 / 1.30.0"
-          echo ""
+
           echo "=============================================="
-          echo "       BUILD V37 TERMINE AVEC SUCCES"
+          echo "BUILD V37 TERMINE AVEC SUCCES."
           echo "=============================================="
