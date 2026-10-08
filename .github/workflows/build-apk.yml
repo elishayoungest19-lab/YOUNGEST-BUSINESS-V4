@@ -43,7 +43,6 @@ jobs:
           ZIP_NAME="YOUNGEST-BUSINESS-V39-PC-ADMIN-JOURNAL-ENVOIS-source.zip"
 
           ZIP_PATH="$(find "$ROOT" -type f -name "$ZIP_NAME" -print -quit)"
-
           if [ -z "$ZIP_PATH" ]; then
             echo "::error::Le ZIP V39 exact est introuvable."
             echo "ZIP disponibles dans le dépôt :"
@@ -400,7 +399,7 @@ jobs:
       - name: Verify Firebase deployment credentials
         shell: bash
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
 
@@ -410,7 +409,7 @@ jobs:
             echo "Ajoutez dans GitHub :"
             echo "Settings > Secrets and variables > Actions > New repository secret"
             echo ""
-            echo "Nom : FIREBASE_SERVICE_ACCOUNT"
+            echo "Nom : FIREBASE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
 
