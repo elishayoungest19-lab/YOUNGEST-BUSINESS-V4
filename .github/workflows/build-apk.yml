@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V38 Reports PDF + Journal Lumicash
+name: Deploy YOUNGEST'S BUSINESS V39 PC Admin
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and verify signed V38 REPORTS PDF + JOURNAL LUMICASH APK
+  deploy:
+    name: Build and deploy V39 PC Admin
     runs-on: ubuntu-latest
 
     steps:
@@ -23,693 +23,486 @@ jobs:
         uses: actions/checkout@v4
 
       # ============================================================
-      # JAVA 17
+      # NODE.JS 20
       # ============================================================
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          node-version: '20'
 
       # ============================================================
-      # ANDROID SDK
+      # FIND V39 SOURCE ZIP
       # ============================================================
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      # ============================================================
-      # ANDROID SDK PACKAGES
-      # ============================================================
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      # ============================================================
-      # GRADLE 8.9
-      # ============================================================
-      - name: Set up Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      # ============================================================
-      # FIND V38 SOURCE ZIP
-      # ============================================================
-      - name: Find exact V38 source ZIP
+      - name: Find exact V39 source ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE-source.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V39-PC-ADMIN-JOURNAL-ENVOIS-source.zip"
 
           ZIP_PATH="$(find "$ROOT" -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP V38 exact est introuvable."
-            echo "ZIP disponibles :"
+            echo "::error::Le ZIP V39 exact est introuvable."
+            echo "ZIP disponibles dans le dépôt :"
             find "$ROOT" -type f -iname '*.zip' -print | sort || true
             exit 1
           fi
 
-          echo "ZIP V38 TROUVE : $ZIP_PATH"
+          echo "ZIP V39 trouvé : $ZIP_PATH"
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v38-source"
+          DEST="$RUNNER_TEMP/v39-source"
 
           rm -rf "$DEST"
           mkdir -p "$DEST"
 
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          SETTINGS="$(
-            find "$DEST" -type f \( \
-              -name settings.gradle \
-              -o -name settings.gradle.kts \
-            \) -print -quit
+          FIREBASE_JSON="$(
+            find "$DEST" -type f -name firebase.json -print -quit
           )"
 
-          if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans le ZIP V38."
+          if [ -z "$FIREBASE_JSON" ]; then
+            echo "::error::firebase.json introuvable dans V39."
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$SETTINGS")"
+          PROJECT_DIR="$(dirname "$FIREBASE_JSON")"
+
+          if [ ! -d "$PROJECT_DIR/web-admin" ]; then
+            echo "::error::Le dossier web-admin est absent de V39."
+            exit 1
+          fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "ZIP V38 : OK"
+          echo "V39 ZIP : OK"
           echo "PROJECT_DIR : $PROJECT_DIR"
 
       # ============================================================
-      # VERIFY V38 IDENTITY
+      # VERIFY FIREBASE PROJECT
       # ============================================================
-      - name: Verify exact V38 identity
+      - name: Verify Firebase project
         shell: bash
         run: |
           set -euo pipefail
 
-          GRADLE="$PROJECT_DIR/app/build.gradle"
+          FIREBASE_RC="$PROJECT_DIR/.firebaserc"
+          FIREBASE_JSON="$PROJECT_DIR/firebase.json"
 
-          test -f "$GRADLE" || {
-            echo "::error::app/build.gradle introuvable."
+          test -f "$FIREBASE_RC" || {
+            echo "::error::.firebaserc absent."
             exit 1
           }
 
-          grep -Eq 'versionCode[[:space:]]+38([[:space:]]|$)' "$GRADLE" || {
-            echo "::error::versionCode 38 absent."
+          test -f "$FIREBASE_JSON" || {
+            echo "::error::firebase.json absent."
             exit 1
           }
 
-          grep -Fq "versionName '1.31.0'" "$GRADLE" || {
-            echo "::error::versionName 1.31.0 absent."
+          grep -Fq '"youngestsbusiness"' "$FIREBASE_RC" || {
+            echo "::error::Le projet Firebase youngestsbusiness n'est pas configuré."
             exit 1
           }
 
-          grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE" || {
-            echo "::error::applicationId incorrect."
+          grep -Fq '"public": "web-admin"' "$FIREBASE_JSON" || {
+            echo "::error::Firebase Hosting n'utilise pas web-admin comme dossier public."
             exit 1
           }
 
-          grep -Fq "namespace 'com.aistudio.youngestbiz.mbkz'" "$GRADLE" || {
-            echo "::error::namespace incorrect."
-            exit 1
-          }
-
-          echo "V38 / 1.31.0 / applicationId : OK"
+          echo "FIREBASE PROJECT : youngestsbusiness"
+          echo "FIREBASE HOSTING : web-admin"
+          echo "CONFIGURATION FIREBASE : OK"
 
       # ============================================================
-      # VERIFY PROJECT FILES
+      # VERIFY WEB ADMIN FILES
       # ============================================================
-      - name: Verify V38 project files
+      - name: Verify V39 PC Admin files
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          RULES="$PROJECT_DIR/firestore.rules"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
-          GOOGLE="$PROJECT_DIR/app/google-services.json"
+          WEB="$PROJECT_DIR/web-admin"
 
           for file in \
-            "$MAIN" \
-            "$SERVICE" \
-            "$RULES" \
-            "$FUNCTIONS" \
-            "$GOOGLE"
+            "$WEB/index.html" \
+            "$WEB/app.js" \
+            "$WEB/styles.css"
           do
-            test -f "$file" || {
-              echo "::error::Fichier manquant : $file"
+            test -s "$file" || {
+              echo "::error::Fichier Web Admin manquant : $file"
               exit 1
             }
           done
 
-          echo "Fichiers Firebase/Android : OK"
+          echo "WEB ADMIN FILES : OK"
 
       # ============================================================
-      # PRESERVE ADMIN CARDS
+      # VERIFY ADMIN AUTHENTICATION
       # ============================================================
-      - name: Verify existing Admin Cards interface
+      - name: Verify Firebase Admin authentication
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          APP="$PROJECT_DIR/web-admin/app.js"
 
-          for label in \
-            'TABLEAU DE BORD' \
-            'GESTION DES CLIENTS' \
-            'GESTION DES PRÊTS' \
-            'REMBOURSEMENTS' \
-            'DEMANDES DE PRÊTS CLIENTS' \
-            'CONTACTEZ-NOUS' \
-            'JOURNAL LUMICASH'
-          do
-            grep -Fq "$label" "$MAIN" || {
-              echo "::error::Carte $label absente."
+          grep -Fq \
+            "signInWithEmailAndPassword" \
+            "$APP" || {
+              echo "::error::Connexion Firebase Email/Mot de passe absente."
               exit 1
             }
-          done
 
-          echo "INTERFACE ADMIN CARDS PRESERVEE : OK"
+          grep -Fq \
+            "elishayoungest19@gmail.com" \
+            "$APP" || {
+              echo "::error::Compte administrateur attendu absent."
+              exit 1
+            }
+
+          grep -Fq \
+            "youngestsbusiness" \
+            "$APP" || {
+              echo "::error::Projet Firebase youngestsbusiness absent de l'application Web."
+              exit 1
+            }
+
+          echo "AUTHENTIFICATION ADMIN : OK"
 
       # ============================================================
-      # VERIFY MONTHLY PDF
+      # VERIFY PC ADMIN SECTIONS
       # ============================================================
-      - name: Verify monthly report real PDF export
+      - name: Verify V39 administration sections
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          HTML="$PROJECT_DIR/web-admin/index.html"
+          APP="$PROJECT_DIR/web-admin/app.js"
 
           for check in \
-            'CREATE_REPORT_PDF' \
-            'pendingReportPdfText' \
-            'pendingReportPdfName' \
-            'ACTION_CREATE_DOCUMENT' \
-            'application/pdf' \
-            'writeTextPdf(uri,pendingReportPdfText' \
-            'GÉNÉRER / EXPORTER CE RAPPORT'
+            "Tableau de bord" \
+            "Clients" \
+            "Demandes de prêts" \
+            "Prêts" \
+            "Remboursements" \
+            "Journal LUMICASH" \
+            "Journal des envois" \
+            "Chat clients"
           do
-            grep -Fq "$check" "$MAIN" || {
-              echo "::error::Export PDF incomplet : $check"
+            grep -Fq "$check" "$HTML" || {
+              echo "::error::Section Admin absente : $check"
               exit 1
             }
           done
 
-          if grep -Fq 'Intent.ACTION_SEND' "$MAIN"; then
-            echo "::error::Ancien export texte encore présent."
+          echo "SECTIONS ADMIN PC : OK"
+
+      # ============================================================
+      # VERIFY JOURNAL DES ENVOIS
+      # ============================================================
+      - name: Verify Journal des envois
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP="$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq \
+            "yb_mobile_money_journal" \
+            "$APP" || {
+              echo "::error::Collection Journal des envois absente."
+              exit 1
+            }
+
+          grep -Fq \
+            "Journal des envois" \
+            "$APP" || {
+              echo "::error::Interface Journal des envois absente."
+              exit 1
+            }
+
+          grep -Fq \
+            "CDF" \
+            "$APP" || {
+              echo "::error::Gestion CDF absente."
+              exit 1
+            }
+
+          grep -Fq \
+            "USD" \
+            "$APP" || {
+              echo "::error::Gestion USD absente."
+              exit 1
+            }
+
+          grep -Fq \
+            "fees" \
+            "$APP" || {
+              echo "::error::Gestion des frais absente."
+              exit 1
+            }
+
+          grep -Fq \
+            "beneficiary" \
+            "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java" || {
+              echo "::error::Champ bénéficiaire absent du projet V39."
+              exit 1
+            }
+
+          echo "JOURNAL DES ENVOIS : OK"
+          echo "CDF : OK"
+          echo "USD : OK"
+          echo "FRAIS : OK"
+          echo "BENEFICIAIRE : OK"
+
+      # ============================================================
+      # VERIFY FIREBASE COLLECTIONS USED BY PC ADMIN
+      # ============================================================
+      - name: Verify Firebase collections
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP="$PROJECT_DIR/web-admin/app.js"
+
+          for collection in \
+            "yb_clients" \
+            "yb_loans" \
+            "yb_payments" \
+            "yb_loan_requests" \
+            "yb_lumicash_journal" \
+            "yb_mobile_money_journal" \
+            "yb_chat_conversations"
+          do
+            grep -Fq "$collection" "$APP" || {
+              echo "::error::Collection Firebase absente du Web Admin : $collection"
+              exit 1
+            }
+          done
+
+          echo "COLLECTIONS FIREBASE : OK"
+
+      # ============================================================
+      # PREPARE WEB LOGO
+      # ============================================================
+      - name: Prepare YOUNGEST'S BUSINESS logo
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WEB="$PROJECT_DIR/web-admin"
+
+          LOGO="$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
+
+          if [ ! -s "$LOGO" ]; then
+            echo "::error::Logo Android introuvable."
             exit 1
           fi
 
-          echo "RAPPORT MENSUEL -> VRAI PDF : OK"
+          cp "$LOGO" "$WEB/logo_youngests_business.png"
+
+          sed -i \
+            's#../app/src/main/res/drawable/logo_youngests_business.png#logo_youngests_business.png#g' \
+            "$WEB/index.html"
+
+          grep -Fq \
+            "logo_youngests_business.png" \
+            "$WEB/index.html" || {
+              echo "::error::Le logo n'est pas correctement référencé."
+              exit 1
+            }
+
+          echo "LOGO PC ADMIN : OK"
 
       # ============================================================
-      # VERIFY JOURNAL LUMICASH
+      # VERIFY FIRESTORE RULES
       # ============================================================
-      - name: Verify Journal Lumicash V38
+      - name: Verify Firestore rules
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           RULES="$PROJECT_DIR/firestore.rules"
 
-          for check in \
-            'lumicashJournalPage()' \
-            'lumicashAgentPage(' \
-            'lumicashForm(' \
-            'LUMICASH_AGENT_1 = "ELISHA YOUNGEST"' \
-            'LUMICASH_AGENT_2 = "BLESSING"' \
-            'LUMICASH_COLLECTION = "yb_lumicash_journal"' \
-            'Rapport journalier' \
-            'Rapport mensuel' \
-            'Numéro du client' \
-            'Nom du bénéficiaire' \
-            'Frais de dépôt' \
-            'HISTORIQUE DES TRANSACTIONS' \
-            'EXPORTER LE RAPPORT EN PDF' \
-            'uploadLumicashEntry' \
-            'loadLumicashCloud'
-          do
-            grep -Fq "$check" "$MAIN" || {
-              echo "::error::Élément Journal Lumicash manquant : $check"
+          test -s "$RULES" || {
+            echo "::error::firestore.rules absent ou vide."
+            exit 1
+          }
+
+          grep -Fq \
+            "function isAdmin()" \
+            "$RULES" || {
+              echo "::error::Fonction isAdmin() absente."
               exit 1
             }
-          done
 
-          grep -Fq 'match /yb_lumicash_journal/' "$RULES" || {
-            echo "::error::Règle Firestore Lumicash absente."
-            exit 1
-          }
-
-          grep -Fq 'allow read, create, update, delete: if isAdmin();' "$RULES" || {
-            echo "::error::Accès Firestore Lumicash incorrect."
-            exit 1
-          }
-
-          echo "JOURNAL LUMICASH V38 : OK"
-
-      # ============================================================
-      # VERIFY AGENTS
-      # ============================================================
-      - name: Verify V38 agent protection
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          grep -Fq 'LUMICASH_AGENT_1 = "ELISHA YOUNGEST"' "$MAIN" || {
-            echo "::error::Agent 1 absent."
-            exit 1
-          }
-
-          grep -Fq 'LUMICASH_AGENT_2 = "BLESSING"' "$MAIN" || {
-            echo "::error::Agent 2 absent."
-            exit 1
-          }
-
-          grep -Fq 'LUMICASH_AGENT_1_CODE_HASH' "$MAIN" || {
-            echo "::error::Protection Agent 1 absente."
-            exit 1
-          }
-
-          grep -Fq 'LUMICASH_AGENT_2_CODE_HASH' "$MAIN" || {
-            echo "::error::Protection Agent 2 absente."
-            exit 1
-          }
-
-          grep -Fq 'MessageDigest.getInstance("SHA-256")' "$MAIN" || {
-            echo "::error::SHA-256 absent."
-            exit 1
-          }
-
-          grep -Fq 'showLumicashAgentLogin' "$MAIN" || {
-            echo "::error::Connexion agent absente."
-            exit 1
-          }
-
-          echo "AGENT 1 : PROTEGE"
-          echo "AGENT 2 : PROTEGE"
-
-      # ============================================================
-      # VERIFY BENEFICIARY
-      # ============================================================
-      - name: Verify V38 beneficiary
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          grep -Fq 'Nom du bénéficiaire' "$MAIN" || {
-            echo "::error::Nom du bénéficiaire absent."
-            exit 1
-          }
-
-          grep -Fq 'beneficiary' "$MAIN" || {
-            echo "::error::Champ beneficiary absent du code."
-            exit 1
-          }
-
-          echo "NOM DU BENEFICIAIRE : OK"
-
-      # ============================================================
-      # PRESERVE CLIENT CHAT
-      # ============================================================
-      - name: Verify V38 client chat delivery preservation
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          for check in \
-            'persistPendingChatDraft' \
-            'openChatEntry()' \
-            'requestChatPhoneNumber()' \
-            'signInAnonymously' \
-            'KEY_PENDING_CHAT_PHONE' \
-            'openOrCreateClientConversation()' \
-            'whereEqualTo("ownerUid"' \
-            'createConversationAndSendDraft' \
-            'conversation.set(c)' \
-            'message.set(msg)' \
-            'msg.put("ownerUid",user.getUid())'
-          do
-            grep -Fq "$check" "$MAIN" || {
-              echo "::error::Chat : $check absent."
+          grep -Fq \
+            "StxrZBDeUodj7YVPmXRA2AbWcUF2" \
+            "$RULES" || {
+              echo "::error::UID administrateur absent des règles."
               exit 1
             }
-          done
 
-          if grep -Fq 'transaction.get(conversation)' "$MAIN"; then
-            echo "::error::Ancienne transaction Chat présente."
-            exit 1
+          grep -Fq \
+            "elishayoungest19@gmail.com" \
+            "$RULES" || {
+              echo "::error::Email administrateur absent des règles."
+              exit 1
+            }
+
+          grep -Fq \
+            "yb_lumicash_journal" \
+            "$RULES" || {
+              echo "::error::Règle Journal LUMICASH absente."
+              exit 1
+            }
+
+          echo "FIRESTORE ADMIN RULES : OK"
+
+      # ============================================================
+      # NOTE JOURNAL DES ENVOIS
+      # ============================================================
+      - name: Check Journal des envois Firestore rule
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RULES="$PROJECT_DIR/firestore.rules"
+
+          if grep -Fq "yb_mobile_money_journal" "$RULES"; then
+            echo "REGLE JOURNAL DES ENVOIS : PRESENTE"
+          else
+            echo "::warning::La collection yb_mobile_money_journal n'a pas encore de règle Firestore dédiée dans V39."
+            echo "::warning::L'interface PC est prête, mais la synchronisation Cloud du Journal des envois devra être traitée avant son utilisation complète."
           fi
 
-          echo "CHAT CLIENT -> ADMIN : PRESERVE"
-
       # ============================================================
-      # PRESERVE ADMIN REPLY
+      # INSTALL FIREBASE CLI
       # ============================================================
-      - name: Verify V38 admin reply preservation
+      - name: Install Firebase CLI
         shell: bash
         run: |
           set -euo pipefail
 
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          npm install --global firebase-tools
 
-          for check in \
-            'adminChatInbox()' \
-            'adminConversation.get()' \
-            'm.put("ownerUid",ownerUid)' \
-            'm.put("senderRole","admin")'
-          do
-            grep -Fq "$check" "$MAIN" || {
-              echo "::error::Chat Admin : $check absent."
-              exit 1
-            }
-          done
-
-          echo "CHAT ADMIN -> CLIENT : PRESERVE"
+          firebase --version
 
       # ============================================================
-      # FIRESTORE CHAT RULES
+      # VERIFY FIREBASE SERVICE ACCOUNT SECRET
       # ============================================================
-      - name: Verify V38 Firestore chat rules
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          RULES="$PROJECT_DIR/firestore.rules"
-
-          for check in \
-            'function isSignedIn()' \
-            'function isAdmin()' \
-            'StxrZBDeUodj7YVPmXRA2AbWcUF2' \
-            'elishayoungest19@gmail.com' \
-            'match /yb_chat_conversations/' \
-            'match /messages/{messageId}' \
-            'request.resource.data.senderUid == request.auth.uid' \
-            'request.resource.data.ownerUid == request.auth.uid' \
-            'request.resource.data.senderRole == "client"' \
-            'request.resource.data.senderRole == "admin"'
-          do
-            grep -Fq "$check" "$RULES" || {
-              echo "::error::Rule Chat manquante : $check"
-              exit 1
-            }
-          done
-
-          echo "RULES CHAT : OK"
-
-      # ============================================================
-      # FIRESTORE LUMICASH RULES
-      # ============================================================
-      - name: Verify V38 Firestore Lumicash rules
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          RULES="$PROJECT_DIR/firestore.rules"
-
-          grep -Fq 'match /yb_lumicash_journal/' "$RULES" || {
-            echo "::error::Collection Lumicash absente."
-            exit 1
-          }
-
-          grep -Fq 'allow read, create, update, delete: if isAdmin();' "$RULES" || {
-            echo "::error::Permissions Lumicash incorrectes."
-            exit 1
-          }
-
-          echo "FIRESTORE LUMICASH : OK"
-
-      # ============================================================
-      # FIREBASE NOTIFICATIONS
-      # ============================================================
-      - name: Verify Firebase notifications
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-          FUNCTIONS="$PROJECT_DIR/functions/index.js"
-
-          grep -Fq 'FirebaseMessagingService' "$SERVICE" || {
-            echo "::error::FirebaseMessagingService absent."
-            exit 1
-          }
-
-          grep -Fq 'onMessageReceived' "$SERVICE" || {
-            echo "::error::onMessageReceived absent."
-            exit 1
-          }
-
-          grep -Fq 'onDocumentCreated' "$FUNCTIONS" || {
-            echo "::error::onDocumentCreated absent."
-            exit 1
-          }
-
-          grep -Fq 'notifyClientWhenAdminReplies' "$FUNCTIONS" || {
-            echo "::error::notifyClientWhenAdminReplies absent."
-            exit 1
-          }
-
-          node --check "$FUNCTIONS"
-
-          echo "NOTIFICATIONS FIREBASE : OK"
-
-      # ============================================================
-      # RELEASE SIGNING
-      # ============================================================
-      - name: Configure release signing
+      - name: Verify Firebase deployment credentials
         shell: bash
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
 
-          test -n "$KEYSTORE_BASE64" || {
-            echo "::error::KEYSTORE_BASE64 manquant."
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Le secret FIREBASE_SERVICE_ACCOUNT est manquant."
+            echo ""
+            echo "Ajoutez dans GitHub :"
+            echo "Settings > Secrets and variables > Actions > New repository secret"
+            echo ""
+            echo "Nom : FIREBASE_SERVICE_ACCOUNT"
+            exit 1
+          fi
+
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+
+          test -s "$RUNNER_TEMP/firebase-service-account.json" || {
+            echo "::error::Le fichier du compte de service Firebase est vide."
             exit 1
           }
 
-          test -n "$KEYSTORE_PASSWORD" || {
-            echo "::error::KEYSTORE_PASSWORD manquant."
-            exit 1
-          }
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
 
-          test -n "$KEY_PASSWORD" || {
-            echo "::error::KEY_PASSWORD manquant."
-            exit 1
-          }
-
-          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
-
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-
-          test -s "$KEYSTORE_FILE" || {
-            echo "::error::Keystore vide/invalide."
-            exit 1
-          }
-
-          chmod 600 "$KEYSTORE_FILE"
-
-          KEY_ALIAS="$(
-            keytool -list -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | awk -F': ' '/^Alias name:/{print $2; exit}'
-          )"
-
-          test -n "$KEY_ALIAS" || {
-            echo "::error::Impossible de récupérer l'alias du keystore."
-            exit 1
-          }
-
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-          } >> "$GITHUB_ENV"
-
-          echo "Keystore : OK"
-          echo "Alias récupéré automatiquement : $KEY_ALIAS"
+          echo "CREDENTIALS FIREBASE : PRESENTES"
 
       # ============================================================
-      # BUILD V38
+      # FIREBASE AUTHENTICATION
       # ============================================================
-      - name: Build signed V38 APK
+      - name: Authenticate with Firebase
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+
+          firebase projects:list \
+            --json \
+            > "$RUNNER_TEMP/firebase-projects.json"
+
+          grep -Fq \
+            '"projectId":"youngestsbusiness"' \
+            "$RUNNER_TEMP/firebase-projects.json" || {
+              echo "::error::Le compte de service n'a pas accès au projet youngestsbusiness."
+              exit 1
+            }
+
+          echo "ACCES FIREBASE : OK"
+
+      # ============================================================
+      # FINAL WEB CHECK
+      # ============================================================
+      - name: Final V39 Web Admin check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WEB="$PROJECT_DIR/web-admin"
+
+          test -s "$WEB/index.html"
+          test -s "$WEB/app.js"
+          test -s "$WEB/styles.css"
+          test -s "$WEB/logo_youngests_business.png"
+
+          echo "=========================================="
+          echo "YOUNGEST'S BUSINESS V39 PC ADMIN"
+          echo "=========================================="
+          echo "WEB ADMIN : OK"
+          echo "LOGO : OK"
+          echo "JOURNAL ENVOIS : OK"
+          echo "FIREBASE : OK"
+          echo "=========================================="
+
+      # ============================================================
+      # DEPLOY FIREBASE HOSTING
+      # ============================================================
+      - name: Deploy V39 PC Admin to Firebase Hosting
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
           set -euo pipefail
 
-          gradle --no-daemon clean :app:assembleRelease --stacktrace
+          firebase deploy \
+            --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
 
       # ============================================================
-      # VERIFY APK
+      # SHOW DEPLOYMENT URL
       # ============================================================
-      - name: Verify generated V38 APK
+      - name: Show V39 PC Admin URL
         shell: bash
         run: |
-          set -euo pipefail
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          test -s "$APK" || {
-            echo "::error::APK release introuvable."
-            exit 1
-          }
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
-            --verbose \
-            --print-certs \
-            "$APK"
-
-          BADGING="$(
-            "$ANDROID_HOME/build-tools/35.0.0/aapt" \
-              dump badging \
-              "$APK"
-          )"
-
-          echo "$BADGING" | grep -Fq \
-            "package: name='com.aistudio.youngestbiz.mbkz'" || {
-              echo "::error::ApplicationId incorrect."
-              exit 1
-            }
-
-          echo "$BADGING" | grep -Fq \
-            "versionCode='38'" || {
-              echo "::error::versionCode incorrect."
-              exit 1
-            }
-
-          echo "$BADGING" | grep -Fq \
-            "versionName='1.31.0'" || {
-              echo "::error::versionName incorrect."
-              exit 1
-            }
-
-          echo "APK PACKAGE : OK"
-          echo "VERSION CODE : 38"
-          echo "VERSION NAME : 1.31.0"
-          echo "SIGNATURE : OK"
-
-      # ============================================================
-      # PREPARE FINAL V38 ARTIFACT
-      # ============================================================
-      - name: Prepare final V38 artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-
-          test -s "$APK" || {
-            echo "::error::APK introuvable avant préparation Artifact."
-            exit 1
-          }
-
-          cp \
-            "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-          echo "Contenu de release-output :"
-          ls -lah "$GITHUB_WORKSPACE/release-output"
-
-          test -s \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
-
-          test -s \
-            "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-          echo "ARTIFACT PREPARE : OK"
-
-      # ============================================================
-      # UPLOAD ARTIFACT
-      # ============================================================
-      - name: Upload signed V38 APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE
-          path: release-output/*
-          if-no-files-found: error
-          retention-days: 30
-
-      # ============================================================
-      # VERIFY ARTIFACT UPLOAD
-      # ============================================================
-      - name: Verify artifact upload
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          test -f \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
-
-          test -s \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE.apk"
-
-          echo "ARTIFACT APK : UPLOADE"
-          echo "NOM : YOUNGEST-BUSINESS-V38-LUMICASH-AGENTS-BENEFICIAIRE"
-          echo "APK : PRESENT"
-          echo "SHA256 : PRESENT"
-
-      # ============================================================
-      # FINAL V38 VERIFICATION
-      # ============================================================
-      - name: Final V38 verification
-        shell: bash
-        run: |
-          echo "=============================================="
-          echo "       YOUNGEST'S BUSINESS V38"
-          echo "=============================================="
-          echo "ADMIN CARDS : PRESERVEES"
-          echo "RAPPORT MENSUEL -> VRAI PDF : VERIFIE"
-          echo "JOURNAL LUMICASH : VERIFIE"
-          echo "AGENT 1 : ELISHA YOUNGEST -> PROTEGE"
-          echo "AGENT 2 : BLESSING -> PROTEGE"
-          echo "NUMERO CLIENT : VERIFIE"
-          echo "NOM BENEFICIAIRE : VERIFIE"
-          echo "MONTANT : VERIFIE"
-          echo "FRAIS DE DEPOT : VERIFIE"
-          echo "DATE : VERIFIE"
-          echo "AGENT : VERIFIE"
-          echo "HISTORIQUE : VERIFIE"
-          echo "RAPPORT JOURNALIER : VERIFIE"
-          echo "RAPPORT MENSUEL : VERIFIE"
-          echo "EXPORT PDF : VERIFIE"
-          echo "FIREBASE LUMICASH : VERIFIE"
-          echo "CLIENT -> ADMIN : PRESERVE"
-          echo "ADMIN -> CLIENT : PRESERVE"
-          echo "FIRESTORE RULES : VERIFIEES"
-          echo "NOTIFICATIONS : VERIFIEES"
-          echo "APK SIGNE : VERIFIE"
-          echo "ARTIFACT : UPLOADE"
-          echo "VERSION : 38 / 1.31.0"
-          echo "=============================================="
-          echo "BUILD V38 TERMINE AVEC SUCCES."
-          echo "=============================================="
+          echo ""
+          echo "================================================"
+          echo "YOUNGEST'S BUSINESS V39 PC ADMIN DEPLOYE"
+          echo "================================================"
+          echo ""
+          echo "URL Firebase Hosting :"
+          echo "https://youngestsbusiness.web.app"
+          echo ""
+          echo "URL alternative :"
+          echo "https://youngestsbusiness.firebaseapp.com"
+          echo ""
+          echo "================================================"
