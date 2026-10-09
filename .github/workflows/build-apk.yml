@@ -254,11 +254,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-LOGO-OFFICIEL.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-LOGO-CORRIGE-1.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V42 introuvable dans le dépôt."
+            echo "::error::ZIP Web V42 corrigé introuvable dans le dépôt."
             find "$GITHUB_WORKSPACE" -type f -iname '*V42*.zip' -print || true
             exit 1
           fi
@@ -273,7 +273,7 @@ jobs:
           FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
 
           if [ -z "$FIREBASE_CONFIG" ]; then
-            echo "::error::firebase.json absent du ZIP V42."
+            echo "::error::firebase.json absent du ZIP V42 corrigé."
             find "$DEST" -maxdepth 4 -type f -print | head -200
             exit 1
           fi
