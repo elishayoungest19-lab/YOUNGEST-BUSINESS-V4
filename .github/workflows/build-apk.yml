@@ -254,7 +254,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-LOGO-CORRIGE-1.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-HEURE-RECHERCHE-CORRIGE.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
