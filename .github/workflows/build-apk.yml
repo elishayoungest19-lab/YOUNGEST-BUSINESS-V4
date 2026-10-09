@@ -35,7 +35,6 @@ jobs:
 
           if [ ! -f "$ZIP_PATH" ]; then
             echo "::error::ZIP corrigé introuvable : $ZIP_NAME"
-            echo "ZIP présents dans le dépôt :"
             find "$ROOT" -type f -iname '*.zip' -print | sort || true
             exit 1
           fi
@@ -80,7 +79,7 @@ jobs:
           }
 
           grep -Fq '"youngestsbusiness"' "$PROJECT_DIR/.firebaserc" || {
-            echo "::error::Le projet youngestsbusiness n'est pas configuré."
+            echo "::error::Projet Firebase youngestsbusiness non configuré."
             exit 1
           }
 
@@ -111,7 +110,6 @@ jobs:
           done
 
           node --check "$WEB/app.js"
-
           echo "FICHIERS WEB ADMIN ET SYNTAXE JAVASCRIPT : OK"
 
       - name: Verify Firebase Admin authentication code
@@ -132,7 +130,7 @@ jobs:
           }
 
           grep -Fq "youngestsbusiness" "$APP" || {
-            echo "::error::Configuration du projet Firebase absente."
+            echo "::error::Configuration Firebase absente."
             exit 1
           }
 
@@ -299,15 +297,17 @@ jobs:
 
           node -e '
             const fs = require("fs");
-            const p = process.argv[1];
-            const c = JSON.parse(fs.readFileSync(p, "utf8"));
+            const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+
             if (!c.project_id || !c.client_email || !c.private_key) {
-              throw new Error("Le JSON du compte de service est incomplet.");
+              throw new Error("JSON du compte de service incomplet.");
             }
+
             if (c.project_id !== "youngestsbusiness") {
               throw new Error("Le compte de service ne correspond pas au projet attendu.");
             }
-            console.log("JSON du compte de service valide pour le projet attendu.");
+
+            console.log("JSON du compte de service valide.");
           ' "$CREDENTIAL_FILE"
 
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIAL_FILE" >> "$GITHUB_ENV"
@@ -319,16 +319,12 @@ jobs:
 
           firebase projects:list --json > "$RUNNER_TEMP/firebase-projects.json"
 
-          node -e '
-            const fs = require("fs");
-            const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const projects = Array.isArray(data.result) ? data.result : data;
-            if (!Array.isArray(projects) ||
-                !projects.some(p => p.projectId === "youngestsbusiness")) {
-              throw new Error("Le projet youngestsbusiness n'est pas visible pour ce compte.");
-            }
-            console.log("Accès au projet Firebase confirmé.");
-          ' "$RUNNER_TEMP/firebase-projects.json"
+          if ! grep -Fq 'youngestsbusiness' "$RUNNER_TEMP/firebase-projects.json"; then
+            echo "::error::Le projet Firebase attendu n'est pas accessible avec ce compte de service."
+            exit 1
+          fi
+
+          echo "ACCÈS AU PROJET FIREBASE : OK"
 
       - name: Final V39 Web Admin check
         shell: bash
