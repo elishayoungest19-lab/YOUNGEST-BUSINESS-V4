@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V41 Android and V42 Web
+name: Build YOUNGEST'S BUSINESS V42 Android and V42 Web
 
 on:
   workflow_dispatch:
@@ -11,139 +11,98 @@ permissions:
 
 jobs:
   build-android:
-    name: Build and verify V41 Android APK
+    name: Build and verify V42 Android APK
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - name: Find and extract V41 Android source
+      - name: Find and extract V42 Android source
         shell: bash
         run: |
           set -euo pipefail
-
-          ZIP_NAME="YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN-source.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V42-ANDROID-RECHERCHE-HEURE-HISTORIQUE-ACTUALISATION-PDF-LOGO-source.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
-
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Android V41 introuvable."
+            echo "::error::ZIP source Android V42 introuvable."
+            find "$GITHUB_WORKSPACE" -type f -iname '*V42*ANDROID*.zip' -print || true
             exit 1
           fi
-
           unzip -t "$ZIP_PATH"
-
-          DEST="$RUNNER_TEMP/v41-android"
+          DEST="$RUNNER_TEMP/v42-android"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
-
-          SETTINGS="$(find "$DEST" -type f \( \
-            -name settings.gradle -o \
-            -name settings.gradle.kts \
-          \) -print -quit)"
-
+          SETTINGS="$(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable dans V41."
+            echo "::error::settings.gradle introuvable dans le ZIP V42."
             exit 1
           fi
-
           PROJECT_DIR="$(dirname "$SETTINGS")"
-
           test -f "$PROJECT_DIR/build.gradle"
           test -f "$PROJECT_DIR/app/build.gradle"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
           test -f "$PROJECT_DIR/app/google-services.json"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Prepare Android version V41
+      - name: Set Android version V42
         shell: bash
         run: |
           set -euo pipefail
-
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
-
           python3 - "$GRADLE_FILE" <<'PY'
           import pathlib
           import re
           import sys
-
           path = pathlib.Path(sys.argv[1])
           text = path.read_text(encoding="utf-8")
-
-          text, code_count = re.subn(
-              r"(?m)^([ \t]*versionCode[ \t]+)40([ \t]*\r?$)",
-              r"\g<1>41\g<2>", text, count=1
-          )
-
-          text, name_count = re.subn(
-              r"(?m)^([ \t]*versionName[ \t]+)['\"]1\.33\.0['\"]([ \t]*\r?$)",
-              r"\g<1>'1.34.0'\g<2>", text, count=1
-          )
-
+          code_pattern = r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$"
+          name_pattern = r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$"""
+          if not re.search(code_pattern, text):
+              raise SystemExit("versionCode introuvable dans app/build.gradle.")
+          if not re.search(name_pattern, text):
+              raise SystemExit("versionName introuvable dans app/build.gradle.")
+          text, code_count = re.subn(code_pattern, r"\g<1>42\g<2>", text, count=1)
+          text, name_count = re.subn(name_pattern, r"\g<1>'1.35.0'\g<2>", text, count=1)
           if code_count != 1 or name_count != 1:
-              raise SystemExit(
-                  "Version Android attendue non trouvée : "
-                  "versionCode 40 et versionName 1.33.0."
-              )
-
+              raise SystemExit("Impossible de définir la version V42.")
           path.write_text(text, encoding="utf-8")
-          print("Version Android conservée : V41 / 1.34.0")
+          print("Version configurée : V42 / 1.35.0")
           PY
-
-          grep -Eq 'versionCode[[:space:]]+41([[:space:]]|$)' "$GRADLE_FILE"
-          grep -Fq "versionName '1.34.0'" "$GRADLE_FILE"
+          grep -Eq 'versionCode[[:space:]]+42([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "versionName '1.35.0'" "$GRADLE_FILE"
           grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE_FILE"
-
       - name: Verify Android and Firebase source
         shell: bash
         run: |
           set -euo pipefail
-
           MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
           RULES="$PROJECT_DIR/firestore.rules"
           FUNCTIONS="$PROJECT_DIR/functions/index.js"
           WEB="$PROJECT_DIR/web-admin/app.js"
-
           for FILE in "$MAIN" "$SERVICE" "$RULES" "$FUNCTIONS" "$WEB"; do
-            test -s "$FILE" || {
-              echo "::error::Fichier absent ou vide : $FILE"
-              exit 1
-            }
+            test -s "$FILE" || { echo "::error::Fichier absent ou vide : $FILE"; exit 1; }
           done
-
           grep -Fq 'createLumicashJournalEntry' "$FUNCTIONS"
           grep -Fq 'AGENT1_PIN' "$FUNCTIONS"
           grep -Fq 'AGENT2_PIN' "$FUNCTIONS"
           grep -Fq 'yb_lumicash_journal' "$RULES"
-
           node --check "$FUNCTIONS"
           node --check "$WEB"
-
       - name: Configure release signing
         shell: bash
         env:
@@ -152,77 +111,48 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-
-          test -n "$KEYSTORE_BASE64"
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Secret KEYSTORE_BASE64 manquant."; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::Secret KEYSTORE_PASSWORD manquant."; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Secret KEY_PASSWORD manquant."; exit 1; }
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
           test -s "$KEYSTORE_FILE"
           chmod 600 "$KEYSTORE_FILE"
-
-          KEY_ALIAS="$(
-            keytool -list -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null |
-              awk -F': ' '/^Alias name:/{print $2; exit}'
-          )"
-
-          test -n "$KEY_ALIAS"
-
+          KEY_ALIAS="$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
+          test -n "$KEY_ALIAS" || { echo "::error::Alias du keystore introuvable."; exit 1; }
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
             echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
-
-      - name: Build signed V41 APK
+      - name: Build signed V42 APK
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
           gradle --no-daemon clean :app:assembleRelease --stacktrace
-
       - name: Verify APK version and signature
         shell: bash
         run: |
           set -euo pipefail
-
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify --verbose --print-certs "$APK"
-
-          BADGING="$(
-            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK"
-          )"
-
-          echo "$BADGING" | grep -Fq \
-            "package: name='com.aistudio.youngestbiz.mbkz'"
-          echo "$BADGING" | grep -Fq "versionCode='41'"
-          echo "$BADGING" | grep -Fq "versionName='1.34.0'"
-
-      - name: Prepare V41 APK artifact
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
+          echo "$BADGING" | grep -Fq "versionCode='42'"
+          echo "$BADGING" | grep -Fq "versionName='1.35.0'"
+      - name: Prepare V42 APK artifact
         shell: bash
         run: |
           set -euo pipefail
-
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          cp \
-            "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-      - name: Upload V41 APK artifact
+          cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V42.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V42.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+      - name: Upload V42 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V41-ANDROID
+          name: YOUNGEST-BUSINESS-V42-ANDROID
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
@@ -231,16 +161,13 @@ jobs:
     name: Deploy V42 Web Admin and Firestore rules
     runs-on: ubuntu-latest
     needs: build-android
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install archive tools and Firebase CLI
         shell: bash
         run: |
@@ -248,94 +175,60 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
           npm install --global firebase-tools
-
       - name: Find and extract exact V42 Web ZIP
         shell: bash
         run: |
           set -euo pipefail
-
           ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-HEURE-RECHERCHE-CORRIGE.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
-
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V42 corrigé introuvable dans le dépôt."
+            echo "::error::ZIP Web V42 corrigé introuvable."
             find "$GITHUB_WORKSPACE" -type f -iname '*V42*.zip' -print || true
             exit 1
           fi
-
           unzip -t "$ZIP_PATH"
-
           DEST="$RUNNER_TEMP/v42-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
-
           FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
-
           if [ -z "$FIREBASE_CONFIG" ]; then
-            echo "::error::firebase.json absent du ZIP V42 corrigé."
-            find "$DEST" -maxdepth 4 -type f -print | head -200
+            echo "::error::firebase.json absent du ZIP Web V42."
             exit 1
           fi
-
           WEB_PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
-
           test -f "$WEB_PROJECT_DIR/.firebaserc"
           test -f "$WEB_PROJECT_DIR/firestore.rules"
           test -f "$WEB_PROJECT_DIR/web-admin/index.html"
           test -f "$WEB_PROJECT_DIR/web-admin/app.js"
-
           echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Source Web V42 vérifiée : $WEB_PROJECT_DIR"
-
       - name: Verify V42 Web assets and JavaScript
         shell: bash
         run: |
           set -euo pipefail
-
-          WEB="$WEB_PROJECT_DIR/web-admin/app.js"
-          INDEX="$WEB_PROJECT_DIR/web-admin/index.html"
-
-          node --check "$WEB"
-
-          if ! find "$WEB_PROJECT_DIR/web-admin" -type f \
-            -iname '*logo*' -print -quit | grep -q .; then
+          node --check "$WEB_PROJECT_DIR/web-admin/app.js"
+          if ! find "$WEB_PROJECT_DIR/web-admin" -type f -iname '*logo*' -print -quit | grep -q .; then
             echo "::error::Aucun fichier logo trouvé dans le Web Admin V42."
             exit 1
           fi
-
-          echo "Fichiers Web V42 présents et JavaScript valide."
-          echo "Index : $INDEX"
-
+          echo "Source Web V42 et JavaScript vérifiés."
       - name: Authenticate Firebase
         shell: bash
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
-            echo "::error::Secret FIREBASE_SERVICE_ACCOUNT_JSON manquant."
-            exit 1
-          }
-
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "::error::Secret FIREBASE_SERVICE_ACCOUNT_JSON manquant."; exit 1; }
           CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
           chmod 600 "$CREDENTIALS"
-
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-
       - name: Deploy V42 Hosting and Firestore rules
         shell: bash
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
           set -euo pipefail
-
-          firebase deploy \
-            --only hosting,firestore:rules \
-            --project youngestsbusiness \
-            --non-interactive
-
+          firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
       - name: Confirm V42 deployment
         shell: bash
         run: |
