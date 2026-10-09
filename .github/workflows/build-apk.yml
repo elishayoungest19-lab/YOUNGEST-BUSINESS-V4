@@ -1,5 +1,4 @@
-
-name: Deploy YOUNGEST'S BUSINESS V40 Journals Synchronization
+name: Build YOUNGEST'S BUSINESS V41 Android and Web
 
 on:
   workflow_dispatch:
@@ -11,233 +10,342 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy V40 Web Admin
+  build-android:
+    name: Build and verify V41 Android APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
         with:
-          node-version: '20'
+          distribution: temurin
+          java-version: '17'
 
-      - name: Find and extract exact V40 source ZIP
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Find and extract exact V41 ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V40-JOURNAUX-SYNCHRONISATION-WEB-ANDROID-source-1.zip"
-          ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
+          ZIP_NAME="YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN-source.zip"
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
 
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::ZIP V40 introuvable : $ZIP_NAME"
-            echo "Archives ZIP présentes dans le dépôt :"
-            find "$GITHUB_WORKSPACE" -maxdepth 2 -type f -iname '*.zip' -print | sort
+          if [ -z "$ZIP_PATH" ]; then
+            echo "::error::Le ZIP source V41 est introuvable."
+            find "$GITHUB_WORKSPACE" -type f -iname '*.zip' -print || true
             exit 1
           fi
 
-          echo "ZIP V40 trouvé : $ZIP_NAME"
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v40-source"
+          DEST="$RUNNER_TEMP/v41-source"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          FIREBASE_JSON="$(find "$DEST" -type f -name firebase.json -print -quit)"
+          SETTINGS="$(find "$DEST" -type f \( \
+            -name settings.gradle -o \
+            -name settings.gradle.kts \
+          \) -print -quit)"
 
-          if [ -z "$FIREBASE_JSON" ]; then
-            echo "::error::firebase.json absent du ZIP V40."
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::settings.gradle introuvable."
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$FIREBASE_JSON")"
-
-          for file in \
-            "$PROJECT_DIR/.firebaserc" \
-            "$PROJECT_DIR/firestore.rules" \
-            "$PROJECT_DIR/web-admin/index.html" \
-            "$PROJECT_DIR/web-admin/app.js" \
-            "$PROJECT_DIR/web-admin/styles.css"
-          do
-            if [ ! -s "$file" ]; then
-              echo "::error::Fichier requis absent ou vide : $file"
-              exit 1
-            fi
-          done
-
+          PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet V40 extrait et fichiers essentiels trouvés."
 
-      - name: Verify Firebase configuration
+          test -f "$PROJECT_DIR/build.gradle"
+          test -f "$PROJECT_DIR/app/build.gradle"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/app/google-services.json"
+
+          echo "Projet Android trouvé : $PROJECT_DIR"
+
+      - name: Prepare Android version V41
         shell: bash
         run: |
           set -euo pipefail
 
-          node <<'NODE'
-          const fs = require("fs");
-          const path = require("path");
+          GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
 
-          const dir = process.env.PROJECT_DIR;
-          const firebasePath = path.join(dir, "firebase.json");
-          const rcPath = path.join(dir, ".firebaserc");
+          python3 - "$GRADLE_FILE" <<'PY'
+          import pathlib
+          import re
+          import sys
 
-          const config = JSON.parse(fs.readFileSync(firebasePath, "utf8"));
-          const rc = JSON.parse(fs.readFileSync(rcPath, "utf8"));
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
 
-          if (rc.projects?.default !== "youngestsbusiness") {
-            throw new Error(".firebaserc ne cible pas youngestsbusiness.");
-          }
+          code_pattern = re.compile(
+              r"(?m)^([ \t]*versionCode[ \t]+)40([ \t]*(?:\r?$))"
+          )
+          name_pattern = re.compile(
+              r"(?m)^([ \t]*versionName[ \t]+)['\"]1\.33\.0['\"]([ \t]*(?:\r?$))"
+          )
 
-          const hosting = Array.isArray(config.hosting)
-            ? config.hosting
-            : [config.hosting];
+          text, code_count = code_pattern.subn(r"\g<1>41\g<2>", text, count=1)
+          text, name_count = name_pattern.subn(
+              r"\g<1>'1.34.0'\g<2>", text, count=1
+          )
 
-          if (!hosting.some(h => h && h.public === "web-admin")) {
-            throw new Error("Firebase Hosting ne cible pas web-admin.");
-          }
+          if code_count != 1:
+              raise SystemExit(
+                  "ERREUR : versionCode 40 attendu, mais non trouvé "
+                  "exactement une fois. Aucun changement de version fiable."
+              )
 
-          if (!config.firestore ||
-              config.firestore.rules !== "firestore.rules") {
-            throw new Error("Configuration des règles Firestore incorrecte.");
-          }
+          if name_count != 1:
+              raise SystemExit(
+                  "ERREUR : versionName 1.33.0 attendu, mais non trouvé "
+                  "exactement une fois. Aucun changement de version fiable."
+              )
 
-          console.log("Configuration Firebase V40 valide.");
-          NODE
+          path.write_text(text, encoding="utf-8")
+          print("Version Android mise à jour : 41 / 1.34.0")
+          PY
 
-      - name: Verify Web Admin JavaScript
+          grep -Eq 'versionCode[[:space:]]+41([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "versionName '1.34.0'" "$GRADLE_FILE"
+          grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE_FILE"
+
+      - name: Verify V41 source and Firebase files
         shell: bash
         run: |
           set -euo pipefail
 
-          WEB="$PROJECT_DIR/web-admin"
+          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
+          RULES="$PROJECT_DIR/firestore.rules"
+          FUNCTIONS="$PROJECT_DIR/functions/index.js"
+          WEB="$PROJECT_DIR/web-admin/app.js"
 
-          node --check "$WEB/app.js"
-
-          echo "Syntaxe JavaScript valide."
-
-      - name: Verify required journal references
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APP="$PROJECT_DIR/web-admin/app.js"
-          HTML="$PROJECT_DIR/web-admin/index.html"
-
-          for term in \
-            "yb_mobile_money_journal" \
-            "yb_lumicash_journal"
-          do
-            if ! grep -Fq "$term" "$APP"; then
-              echo "::error::Référence de collection absente du Web Admin : $term"
+          for FILE in "$MAIN" "$SERVICE" "$RULES" "$FUNCTIONS" "$WEB"; do
+            test -s "$FILE" || {
+              echo "::error::Fichier absent ou vide : $FILE"
               exit 1
-            fi
+            }
           done
 
-          if ! grep -Fq "Journal des envois" "$HTML"; then
-            echo "::error::Rubrique Journal des envois absente."
-            exit 1
-          fi
+          grep -Fq 'createLumicashJournalEntry' "$FUNCTIONS"
+          grep -Fq 'AGENT1_PIN' "$FUNCTIONS"
+          grep -Fq 'AGENT2_PIN' "$FUNCTIONS"
+          grep -Fq 'yb_lumicash_journal' "$RULES"
 
-          if ! grep -Fq "Journal LUMICASH" "$HTML"; then
-            echo "::error::Rubrique Journal LUMICASH absente."
-            exit 1
-          fi
+          node --check "$FUNCTIONS"
+          node --check "$WEB"
 
-          echo "Rubriques et références des journaux trouvées."
+          echo "Fichiers Android, Web et Firebase vérifiés."
 
-      - name: Verify Firebase deployment credentials
+      - name: Configure release signing
         shell: bash
         env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::error::Secret FIREBASE_SERVICE_ACCOUNT_JSON manquant."
+          test -n "$KEYSTORE_BASE64" || {
+            echo "::error::Secret KEYSTORE_BASE64 manquant."
+            exit 1
+          }
+
+          test -n "$KEYSTORE_PASSWORD" || {
+            echo "::error::Secret KEYSTORE_PASSWORD manquant."
+            exit 1
+          }
+
+          test -n "$KEY_PASSWORD" || {
+            echo "::error::Secret KEY_PASSWORD manquant."
+            exit 1
+          }
+
+          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+
+          KEY_ALIAS="$(
+            keytool -list -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null |
+              awk -F': ' '/^Alias name:/{print $2; exit}'
+          )"
+
+          test -n "$KEY_ALIAS" || {
+            echo "::error::Alias du keystore introuvable."
+            exit 1
+          }
+
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+          echo "Keystore et alias vérifiés."
+
+      - name: Build signed V41 APK
+        shell: bash
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon clean :app:assembleRelease --stacktrace
+
+      - name: Verify APK version and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK" || {
+            echo "::error::APK release introuvable."
+            exit 1
+          }
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose --print-certs "$APK"
+
+          BADGING="$(
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK"
+          )"
+
+          echo "$BADGING" | grep -Fq \
+            "package: name='com.aistudio.youngestbiz.mbkz'"
+
+          echo "$BADGING" | grep -Fq "versionCode='41'"
+          echo "$BADGING" | grep -Fq "versionName='1.34.0'"
+
+          echo "APK V41 : package, version et signature vérifiés."
+
+      - name: Prepare V41 release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
+
+          cp \
+            "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN.apk"
+
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN.apk" \
+            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+      - name: Upload V41 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy-web:
+    name: Deploy V41 Web Admin and Firestore rules
+    runs-on: ubuntu-latest
+    needs: build-android
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Find and extract exact V41 ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_NAME="YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN-source.zip"
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
+
+          if [ -z "$ZIP_PATH" ]; then
+            echo "::error::Le ZIP source V41 est introuvable."
             exit 1
           fi
 
-          CREDENTIAL_FILE="$RUNNER_TEMP/firebase-service-account.json"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDENTIAL_FILE"
+          DEST="$RUNNER_TEMP/v41-web"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP_PATH" -d "$DEST"
 
-          node - "$CREDENTIAL_FILE" <<'NODE'
-          const fs = require("fs");
-          const credentials = JSON.parse(
-            fs.readFileSync(process.argv[2], "utf8")
-          );
+          FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
 
-          if (
-            !credentials.project_id ||
-            !credentials.client_email ||
-            !credentials.private_key
-          ) {
-            throw new Error("JSON du compte de service incomplet.");
-          }
+          if [ -z "$FIREBASE_CONFIG" ]; then
+            echo "::error::firebase.json introuvable."
+            exit 1
+          fi
 
-          if (credentials.project_id !== "youngestsbusiness") {
-            throw new Error("Le compte de service vise un autre projet.");
-          }
+          PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
 
-          console.log("Identifiants du compte de service valides.");
-          NODE
+          test -f "$PROJECT_DIR/.firebaserc"
+          test -f "$PROJECT_DIR/firestore.rules"
+          test -f "$PROJECT_DIR/web-admin/index.html"
+          test -f "$PROJECT_DIR/web-admin/app.js"
 
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIAL_FILE" >> "$GITHUB_ENV"
+          echo "WEB_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Web Admin V41 trouvé."
 
-      - name: Install Firebase CLI
+      - name: Authenticate Firebase
         shell: bash
-        run: |
-          set -euo pipefail
-          npm install --global firebase-tools
-          firebase --version
-
-      - name: Verify Firebase project access
-        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
 
-          firebase projects:list --json > "$RUNNER_TEMP/firebase-projects.json"
-
-          node - "$RUNNER_TEMP/firebase-projects.json" <<'NODE'
-          const fs = require("fs");
-          const data = JSON.parse(
-            fs.readFileSync(process.argv[2], "utf8")
-          );
-
-          const projects = Array.isArray(data)
-            ? data
-            : Array.isArray(data.result)
-              ? data.result
-              : [];
-
-          if (!projects.some(p => p.projectId === "youngestsbusiness")) {
-            throw new Error(
-              "Le projet youngestsbusiness n'est pas accessible."
-            );
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
+            echo "::error::Secret FIREBASE_SERVICE_ACCOUNT_JSON manquant."
+            exit 1
           }
 
-          console.log("Accès au projet Firebase confirmé.");
-          NODE
+          CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
+          chmod 600 "$CREDENTIALS"
 
-      - name: Deploy V40 Web Admin and Firestore rules
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
+
+      - name: Deploy V41 Hosting and Firestore rules
         shell: bash
+        working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
           set -euo pipefail
-
-          cd "$PROJECT_DIR"
 
           firebase deploy \
             --only hosting,firestore:rules \
             --project youngestsbusiness \
             --non-interactive
 
-      - name: Show deployed V40 URL
-        shell: bash
+      - name: Confirm Web deployment
         run: |
-          echo "Déploiement V40 terminé."
-          echo "Administration Web : https://youngestsbusiness.web.app"
-          echo "URL alternative : https://youngestsbusiness.firebaseapp.com"
-          
+          echo "Déploiement Hosting et règles Firestore terminé."
+          echo "Projet Firebase : youngestsbusiness"
+          echo "Web Admin : https://youngestsbusiness.web.app"
+                  
