@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V41 Android and Web
+name: Build YOUNGEST'S BUSINESS V41 Android and V42 Web
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find and extract exact V41 ZIP
+      - name: Find and extract V41 Android source
         shell: bash
         run: |
           set -euo pipefail
@@ -50,15 +50,13 @@ jobs:
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP source V41 est introuvable."
-            find "$GITHUB_WORKSPACE" -type f -iname '*.zip' -print || true
+            echo "::error::ZIP Android V41 introuvable."
             exit 1
           fi
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v41-source"
-          rm -rf "$DEST"
+          DEST="$RUNNER_TEMP/v41-android"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -68,19 +66,18 @@ jobs:
           \) -print -quit)"
 
           if [ -z "$SETTINGS" ]; then
-            echo "::error::settings.gradle introuvable."
+            echo "::error::settings.gradle introuvable dans V41."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$SETTINGS")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           test -f "$PROJECT_DIR/build.gradle"
           test -f "$PROJECT_DIR/app/build.gradle"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
           test -f "$PROJECT_DIR/app/google-services.json"
 
-          echo "Projet Android trouvé : $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Prepare Android version V41
         shell: bash
@@ -97,39 +94,31 @@ jobs:
           path = pathlib.Path(sys.argv[1])
           text = path.read_text(encoding="utf-8")
 
-          code_pattern = re.compile(
-              r"(?m)^([ \t]*versionCode[ \t]+)40([ \t]*(?:\r?$))"
-          )
-          name_pattern = re.compile(
-              r"(?m)^([ \t]*versionName[ \t]+)['\"]1\.33\.0['\"]([ \t]*(?:\r?$))"
+          text, code_count = re.subn(
+              r"(?m)^([ \t]*versionCode[ \t]+)40([ \t]*\r?$)",
+              r"\g<1>41\g<2>", text, count=1
           )
 
-          text, code_count = code_pattern.subn(r"\g<1>41\g<2>", text, count=1)
-          text, name_count = name_pattern.subn(
+          text, name_count = re.subn(
+              r"(?m)^([ \t]*versionName[ \t]+)['\"]1\.33\.0['\"]([ \t]*\r?$)",
               r"\g<1>'1.34.0'\g<2>", text, count=1
           )
 
-          if code_count != 1:
+          if code_count != 1 or name_count != 1:
               raise SystemExit(
-                  "ERREUR : versionCode 40 attendu, mais non trouvé "
-                  "exactement une fois. Aucun changement de version fiable."
-              )
-
-          if name_count != 1:
-              raise SystemExit(
-                  "ERREUR : versionName 1.33.0 attendu, mais non trouvé "
-                  "exactement une fois. Aucun changement de version fiable."
+                  "Version Android attendue non trouvée : "
+                  "versionCode 40 et versionName 1.33.0."
               )
 
           path.write_text(text, encoding="utf-8")
-          print("Version Android mise à jour : 41 / 1.34.0")
+          print("Version Android conservée : V41 / 1.34.0")
           PY
 
           grep -Eq 'versionCode[[:space:]]+41([[:space:]]|$)' "$GRADLE_FILE"
           grep -Fq "versionName '1.34.0'" "$GRADLE_FILE"
           grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE_FILE"
 
-      - name: Verify V41 source and Firebase files
+      - name: Verify Android and Firebase source
         shell: bash
         run: |
           set -euo pipefail
@@ -155,8 +144,6 @@ jobs:
           node --check "$FUNCTIONS"
           node --check "$WEB"
 
-          echo "Fichiers Android, Web et Firebase vérifiés."
-
       - name: Configure release signing
         shell: bash
         env:
@@ -166,20 +153,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          test -n "$KEYSTORE_BASE64" || {
-            echo "::error::Secret KEYSTORE_BASE64 manquant."
-            exit 1
-          }
-
-          test -n "$KEYSTORE_PASSWORD" || {
-            echo "::error::Secret KEYSTORE_PASSWORD manquant."
-            exit 1
-          }
-
-          test -n "$KEY_PASSWORD" || {
-            echo "::error::Secret KEY_PASSWORD manquant."
-            exit 1
-          }
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
 
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
@@ -193,18 +169,13 @@ jobs:
               awk -F': ' '/^Alias name:/{print $2; exit}'
           )"
 
-          test -n "$KEY_ALIAS" || {
-            echo "::error::Alias du keystore introuvable."
-            exit 1
-          }
+          test -n "$KEY_ALIAS"
 
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
             echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
-
-          echo "Keystore et alias vérifiés."
 
       - name: Build signed V41 APK
         shell: bash
@@ -219,10 +190,7 @@ jobs:
           set -euo pipefail
 
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK" || {
-            echo "::error::APK release introuvable."
-            exit 1
-          }
+          test -s "$APK"
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify --verbose --print-certs "$APK"
@@ -233,13 +201,10 @@ jobs:
 
           echo "$BADGING" | grep -Fq \
             "package: name='com.aistudio.youngestbiz.mbkz'"
-
           echo "$BADGING" | grep -Fq "versionCode='41'"
           echo "$BADGING" | grep -Fq "versionName='1.34.0'"
 
-          echo "APK V41 : package, version et signature vérifiés."
-
-      - name: Prepare V41 release artifact
+      - name: Prepare V41 APK artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -248,22 +213,22 @@ jobs:
 
           cp \
             "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V41.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       - name: Upload V41 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN
+          name: YOUNGEST-BUSINESS-V41-ANDROID
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
 
   deploy-web:
-    name: Deploy V41 Web Admin and Firestore rules
+    name: Deploy V42 Web Admin and Firestore rules
     runs-on: ubuntu-latest
     needs: build-android
 
@@ -276,23 +241,31 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools
+      - name: Install archive tools and Firebase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          npm install --global firebase-tools
 
-      - name: Find and extract exact V41 ZIP
+      - name: Find and extract exact V42 Web ZIP
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP_NAME="YOUNGEST-BUSINESS-V41-JOURNAUX-SYNCHRONISATION-PIN-source.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-LOGO-OFFICIEL.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
 
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::Le ZIP source V41 est introuvable."
+            echo "::error::ZIP Web V42 introuvable dans le dépôt."
+            find "$GITHUB_WORKSPACE" -type f -iname '*V42*.zip' -print || true
             exit 1
           fi
 
-          DEST="$RUNNER_TEMP/v41-web"
+          unzip -t "$ZIP_PATH"
+
+          DEST="$RUNNER_TEMP/v42-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
@@ -300,19 +273,39 @@ jobs:
           FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
 
           if [ -z "$FIREBASE_CONFIG" ]; then
-            echo "::error::firebase.json introuvable."
+            echo "::error::firebase.json absent du ZIP V42."
+            find "$DEST" -maxdepth 4 -type f -print | head -200
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
+          WEB_PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
 
-          test -f "$PROJECT_DIR/.firebaserc"
-          test -f "$PROJECT_DIR/firestore.rules"
-          test -f "$PROJECT_DIR/web-admin/index.html"
-          test -f "$PROJECT_DIR/web-admin/app.js"
+          test -f "$WEB_PROJECT_DIR/.firebaserc"
+          test -f "$WEB_PROJECT_DIR/firestore.rules"
+          test -f "$WEB_PROJECT_DIR/web-admin/index.html"
+          test -f "$WEB_PROJECT_DIR/web-admin/app.js"
 
-          echo "WEB_PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Web Admin V41 trouvé."
+          echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Source Web V42 vérifiée : $WEB_PROJECT_DIR"
+
+      - name: Verify V42 Web assets and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WEB="$WEB_PROJECT_DIR/web-admin/app.js"
+          INDEX="$WEB_PROJECT_DIR/web-admin/index.html"
+
+          node --check "$WEB"
+
+          if ! find "$WEB_PROJECT_DIR/web-admin" -type f \
+            -iname '*logo*' -print -quit | grep -q .; then
+            echo "::error::Aucun fichier logo trouvé dans le Web Admin V42."
+            exit 1
+          fi
+
+          echo "Fichiers Web V42 présents et JavaScript valide."
+          echo "Index : $INDEX"
 
       - name: Authenticate Firebase
         shell: bash
@@ -332,7 +325,7 @@ jobs:
 
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
 
-      - name: Deploy V41 Hosting and Firestore rules
+      - name: Deploy V42 Hosting and Firestore rules
         shell: bash
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
@@ -343,9 +336,9 @@ jobs:
             --project youngestsbusiness \
             --non-interactive
 
-      - name: Confirm Web deployment
+      - name: Confirm V42 deployment
+        shell: bash
         run: |
-          echo "Déploiement Hosting et règles Firestore terminé."
+          echo "Web Admin V42 déployé."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
-                  
