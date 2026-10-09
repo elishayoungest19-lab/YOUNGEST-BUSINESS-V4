@@ -32,6 +32,7 @@ jobs:
           ZIP_NAME="YOUNGEST-BUSINESS-V39-PC-ADMIN-JOURNAL-ENVOIS-source.zip"
 
           ZIP_PATH="$(find "$ROOT" -type f -name "$ZIP_NAME" -print -quit)"
+
           if [ -z "$ZIP_PATH" ]; then
             echo "::error::Le ZIP V39 exact est introuvable."
             find "$ROOT" -type f -iname '*.zip' -print | sort || true
@@ -47,12 +48,14 @@ jobs:
           unzip -q "$ZIP_PATH" -d "$DEST"
 
           FIREBASE_JSON="$(find "$DEST" -type f -name firebase.json -print -quit)"
+
           if [ -z "$FIREBASE_JSON" ]; then
             echo "::error::firebase.json introuvable dans V39."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$FIREBASE_JSON")"
+
           if [ ! -d "$PROJECT_DIR/web-admin" ]; then
             echo "::error::Le dossier web-admin est absent de V39."
             exit 1
@@ -98,6 +101,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           WEB="$PROJECT_DIR/web-admin"
 
           for file in "$WEB/index.html" "$WEB/app.js" "$WEB/styles.css"; do
@@ -113,6 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APP="$PROJECT_DIR/web-admin/app.js"
 
           grep -Fq "signInWithEmailAndPassword" "$APP" || {
@@ -126,7 +131,7 @@ jobs:
           }
 
           grep -Fq "youngestsbusiness" "$APP" || {
-            echo "::error::Projet Firebase youngestsbusiness absent de l'application Web."
+            echo "::error::Projet Firebase absent de l'application Web."
             exit 1
           }
 
@@ -136,6 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           HTML="$PROJECT_DIR/web-admin/index.html"
 
           for check in \
@@ -160,19 +166,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP="$PROJECT_DIR/web-admin/app.js"
 
-          for check in "yb_mobile_money_journal" "Journal des envois" "CDF" "USD" "fees"; do
+          APP="$PROJECT_DIR/web-admin/app.js"
+          JAVA="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
+          for check in \
+            "yb_mobile_money_journal" \
+            "Journal des envois" \
+            "CDF" \
+            "USD" \
+            "fees"
+          do
             grep -Fq "$check" "$APP" || {
               echo "::error::Élément Journal des envois absent : $check"
               exit 1
             }
           done
 
-          grep -Fq "beneficiary" \
-            "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java" || {
-              echo "::error::Champ bénéficiaire absent du projet V39."
-              exit 1
+          grep -Fq "beneficiary" "$JAVA" || {
+            echo "::error::Champ bénéficiaire absent du projet V39."
+            exit 1
           }
 
           echo "JOURNAL DES ENVOIS : OK"
@@ -185,6 +198,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           APP="$PROJECT_DIR/web-admin/app.js"
 
           for collection in \
@@ -208,6 +222,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           WEB="$PROJECT_DIR/web-admin"
           LOGO="$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
 
@@ -233,6 +248,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           RULES="$PROJECT_DIR/firestore.rules"
 
           test -s "$RULES" || {
@@ -258,13 +274,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           RULES="$PROJECT_DIR/firestore.rules"
 
           if grep -Fq "yb_mobile_money_journal" "$RULES"; then
             echo "REGLE JOURNAL DES ENVOIS : PRESENTE"
           else
-            echo "::warning::La collection yb_mobile_money_journal n'a pas encore de règle Firestore dédiée dans V39."
-            echo "::warning::La synchronisation Cloud du Journal des envois devra être traitée avant son utilisation complète."
+            echo "::warning::La collection yb_mobile_money_journal n'a pas encore de règle Firestore dédiée."
+            echo "::warning::La synchronisation Cloud du Journal des envois reste à vérifier."
           fi
 
       - name: Install Firebase CLI
@@ -281,68 +298,49 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             echo "::error::Le secret Firebase est manquant."
             echo "Nom attendu : FIREBASE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
 
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          CREDENTIALS_FILE="$RUNNER_TEMP/firebase-service-account.json"
 
-          test -s "$RUNNER_TEMP/firebase-service-account.json" || {
-            echo "::error::Le fichier du compte de service Firebase est vide."
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDENTIALS_FILE"
+
+          test -s "$CREDENTIALS_FILE" || {
+            echo "::error::Le fichier du compte de service est vide."
             exit 1
           }
 
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-          echo "CREDENTIALS FIREBASE : PRESENTES"
+          node -e "const fs=require('fs'); const d=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); if(d.project_id!=='youngestsbusiness'||!d.client_email||!d.private_key) { console.error('Le JSON ne correspond pas au projet attendu ou est incomplet.'); process.exit(1); }" "$CREDENTIALS_FILE" || {
+            echo "::error::Le JSON du compte de service est invalide ou ne correspond pas au projet."
+            exit 1
+          }
+
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS_FILE" >> "$GITHUB_ENV"
+          echo "CREDENTIALS FIREBASE : JSON VALIDE"
 
       - name: Authenticate with Firebase
         shell: bash
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
           set -euo pipefail
 
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
-
-          firebase projects:list --json > "$RUNNER_TEMP/firebase-projects.json"
-
-          # Accepte le JSON avec ou sans espaces autour des deux-points.
-          if ! grep -Eq \
-            '"projectId"[[:space:]]*:[[:space:]]*"youngestsbusiness"' \
-            "$RUNNER_TEMP/firebase-projects.json"; then
-            echo "::error::Le projet youngestsbusiness n'a pas été trouvé dans la liste Firebase accessible au compte de service."
-            echo "Diagnostic : structure de la réponse Firebase (sans afficher de données secrètes) :"
-            node -e '
-              const fs = require("fs");
-              const p = process.argv[1];
-              try {
-                const d = JSON.parse(fs.readFileSync(p, "utf8"));
-                const show = x => {
-                  if (Array.isArray(x)) return x.map(show);
-                  if (x && typeof x === "object") {
-                    const o = {};
-                    for (const [k,v] of Object.entries(x)) {
-                      o[k] = /projectId|project_id|error|status|result|projects/i.test(k)
-                        ? show(v) : (v && typeof v === "object" ? show(v) : undefined);
-                    }
-                    return o;
-                  }
-                  return x;
-                };
-                console.log(JSON.stringify(show(d), null, 2));
-              } catch {
-                console.log("La réponse n'est pas un JSON valide.");
-              }
-            ' "$RUNNER_TEMP/firebase-projects.json"
+          test -s "$GOOGLE_APPLICATION_CREDENTIALS" || {
+            echo "::error::Le fichier de credentials Firebase est introuvable."
             exit 1
-          fi
+          }
 
-          echo "ACCES FIREBASE : OK"
+          echo "AUTHENTIFICATION : fichier de compte de service disponible."
+          echo "Le test d'accès réel au projet sera effectué pendant le déploiement."
 
       - name: Final V39 Web Admin check
         shell: bash
         run: |
           set -euo pipefail
+
           WEB="$PROJECT_DIR/web-admin"
 
           test -s "$WEB/index.html"
@@ -362,7 +360,7 @@ jobs:
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
           set -euo pipefail
 
