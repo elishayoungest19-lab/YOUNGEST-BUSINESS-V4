@@ -15,76 +15,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # ============================================================
-      # CHECKOUT
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ============================================================
-      # NODE.JS 20
-      # ============================================================
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # ============================================================
-      # FIND V39 SOURCE ZIP
-      # ============================================================
       - name: Find exact V39 source ZIP
         shell: bash
         run: |
           set -euo pipefail
 
           ROOT="$GITHUB_WORKSPACE"
-
           ZIP_NAME="YOUNGEST-BUSINESS-V39-PC-ADMIN-JOURNAL-ENVOIS-source.zip"
 
           ZIP_PATH="$(find "$ROOT" -type f -name "$ZIP_NAME" -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
             echo "::error::Le ZIP V39 exact est introuvable."
-            echo "ZIP disponibles dans le dépôt :"
             find "$ROOT" -type f -iname '*.zip' -print | sort || true
             exit 1
           fi
 
           echo "ZIP V39 trouvé : $ZIP_PATH"
-
           unzip -t "$ZIP_PATH"
 
           DEST="$RUNNER_TEMP/v39-source"
-
           rm -rf "$DEST"
           mkdir -p "$DEST"
-
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          FIREBASE_JSON="$(
-            find "$DEST" -type f -name firebase.json -print -quit
-          )"
-
+          FIREBASE_JSON="$(find "$DEST" -type f -name firebase.json -print -quit)"
           if [ -z "$FIREBASE_JSON" ]; then
             echo "::error::firebase.json introuvable dans V39."
             exit 1
           fi
 
           PROJECT_DIR="$(dirname "$FIREBASE_JSON")"
-
           if [ ! -d "$PROJECT_DIR/web-admin" ]; then
             echo "::error::Le dossier web-admin est absent de V39."
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
           echo "V39 ZIP : OK"
           echo "PROJECT_DIR : $PROJECT_DIR"
 
-      # ============================================================
-      # VERIFY FIREBASE PROJECT
-      # ============================================================
       - name: Verify Firebase project
         shell: bash
         run: |
@@ -117,21 +94,13 @@ jobs:
           echo "FIREBASE HOSTING : web-admin"
           echo "CONFIGURATION FIREBASE : OK"
 
-      # ============================================================
-      # VERIFY WEB ADMIN FILES
-      # ============================================================
       - name: Verify V39 PC Admin files
         shell: bash
         run: |
           set -euo pipefail
-
           WEB="$PROJECT_DIR/web-admin"
 
-          for file in \
-            "$WEB/index.html" \
-            "$WEB/app.js" \
-            "$WEB/styles.css"
-          do
+          for file in "$WEB/index.html" "$WEB/app.js" "$WEB/styles.css"; do
             test -s "$file" || {
               echo "::error::Fichier Web Admin manquant : $file"
               exit 1
@@ -140,49 +109,34 @@ jobs:
 
           echo "WEB ADMIN FILES : OK"
 
-      # ============================================================
-      # VERIFY ADMIN AUTHENTICATION
-      # ============================================================
       - name: Verify Firebase Admin authentication
         shell: bash
         run: |
           set -euo pipefail
-
           APP="$PROJECT_DIR/web-admin/app.js"
 
-          grep -Fq \
-            "signInWithEmailAndPassword" \
-            "$APP" || {
-              echo "::error::Connexion Firebase Email/Mot de passe absente."
-              exit 1
-            }
+          grep -Fq "signInWithEmailAndPassword" "$APP" || {
+            echo "::error::Connexion Firebase Email/Mot de passe absente."
+            exit 1
+          }
 
-          grep -Fq \
-            "elishayoungest19@gmail.com" \
-            "$APP" || {
-              echo "::error::Compte administrateur attendu absent."
-              exit 1
-            }
+          grep -Fq "elishayoungest19@gmail.com" "$APP" || {
+            echo "::error::Compte administrateur attendu absent."
+            exit 1
+          }
 
-          grep -Fq \
-            "youngestsbusiness" \
-            "$APP" || {
-              echo "::error::Projet Firebase youngestsbusiness absent de l'application Web."
-              exit 1
-            }
+          grep -Fq "youngestsbusiness" "$APP" || {
+            echo "::error::Projet Firebase youngestsbusiness absent de l'application Web."
+            exit 1
+          }
 
           echo "AUTHENTIFICATION ADMIN : OK"
 
-      # ============================================================
-      # VERIFY PC ADMIN SECTIONS
-      # ============================================================
       - name: Verify V39 administration sections
         shell: bash
         run: |
           set -euo pipefail
-
           HTML="$PROJECT_DIR/web-admin/index.html"
-          APP="$PROJECT_DIR/web-admin/app.js"
 
           for check in \
             "Tableau de bord" \
@@ -202,57 +156,24 @@ jobs:
 
           echo "SECTIONS ADMIN PC : OK"
 
-      # ============================================================
-      # VERIFY JOURNAL DES ENVOIS
-      # ============================================================
       - name: Verify Journal des envois
         shell: bash
         run: |
           set -euo pipefail
-
           APP="$PROJECT_DIR/web-admin/app.js"
 
-          grep -Fq \
-            "yb_mobile_money_journal" \
-            "$APP" || {
-              echo "::error::Collection Journal des envois absente."
+          for check in "yb_mobile_money_journal" "Journal des envois" "CDF" "USD" "fees"; do
+            grep -Fq "$check" "$APP" || {
+              echo "::error::Élément Journal des envois absent : $check"
               exit 1
             }
+          done
 
-          grep -Fq \
-            "Journal des envois" \
-            "$APP" || {
-              echo "::error::Interface Journal des envois absente."
-              exit 1
-            }
-
-          grep -Fq \
-            "CDF" \
-            "$APP" || {
-              echo "::error::Gestion CDF absente."
-              exit 1
-            }
-
-          grep -Fq \
-            "USD" \
-            "$APP" || {
-              echo "::error::Gestion USD absente."
-              exit 1
-            }
-
-          grep -Fq \
-            "fees" \
-            "$APP" || {
-              echo "::error::Gestion des frais absente."
-              exit 1
-            }
-
-          grep -Fq \
-            "beneficiary" \
+          grep -Fq "beneficiary" \
             "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java" || {
               echo "::error::Champ bénéficiaire absent du projet V39."
               exit 1
-            }
+          }
 
           echo "JOURNAL DES ENVOIS : OK"
           echo "CDF : OK"
@@ -260,14 +181,10 @@ jobs:
           echo "FRAIS : OK"
           echo "BENEFICIAIRE : OK"
 
-      # ============================================================
-      # VERIFY FIREBASE COLLECTIONS USED BY PC ADMIN
-      # ============================================================
       - name: Verify Firebase collections
         shell: bash
         run: |
           set -euo pipefail
-
           APP="$PROJECT_DIR/web-admin/app.js"
 
           for collection in \
@@ -287,16 +204,11 @@ jobs:
 
           echo "COLLECTIONS FIREBASE : OK"
 
-      # ============================================================
-      # PREPARE WEB LOGO
-      # ============================================================
       - name: Prepare YOUNGEST'S BUSINESS logo
         shell: bash
         run: |
           set -euo pipefail
-
           WEB="$PROJECT_DIR/web-admin"
-
           LOGO="$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
 
           if [ ! -s "$LOGO" ]; then
@@ -310,23 +222,17 @@ jobs:
             's#../app/src/main/res/drawable/logo_youngests_business.png#logo_youngests_business.png#g' \
             "$WEB/index.html"
 
-          grep -Fq \
-            "logo_youngests_business.png" \
-            "$WEB/index.html" || {
-              echo "::error::Le logo n'est pas correctement référencé."
-              exit 1
-            }
+          grep -Fq "logo_youngests_business.png" "$WEB/index.html" || {
+            echo "::error::Le logo n'est pas correctement référencé."
+            exit 1
+          }
 
           echo "LOGO PC ADMIN : OK"
 
-      # ============================================================
-      # VERIFY FIRESTORE RULES
-      # ============================================================
       - name: Verify Firestore rules
         shell: bash
         run: |
           set -euo pipefail
-
           RULES="$PROJECT_DIR/firestore.rules"
 
           test -s "$RULES" || {
@@ -334,68 +240,40 @@ jobs:
             exit 1
           }
 
-          grep -Fq \
+          for check in \
             "function isAdmin()" \
-            "$RULES" || {
-              echo "::error::Fonction isAdmin() absente."
-              exit 1
-            }
-
-          grep -Fq \
             "StxrZBDeUodj7YVPmXRA2AbWcUF2" \
-            "$RULES" || {
-              echo "::error::UID administrateur absent des règles."
-              exit 1
-            }
-
-          grep -Fq \
             "elishayoungest19@gmail.com" \
-            "$RULES" || {
-              echo "::error::Email administrateur absent des règles."
+            "yb_lumicash_journal"
+          do
+            grep -Fq "$check" "$RULES" || {
+              echo "::error::Élément Firestore absent : $check"
               exit 1
             }
-
-          grep -Fq \
-            "yb_lumicash_journal" \
-            "$RULES" || {
-              echo "::error::Règle Journal LUMICASH absente."
-              exit 1
-            }
+          done
 
           echo "FIRESTORE ADMIN RULES : OK"
 
-      # ============================================================
-      # NOTE JOURNAL DES ENVOIS
-      # ============================================================
       - name: Check Journal des envois Firestore rule
         shell: bash
         run: |
           set -euo pipefail
-
           RULES="$PROJECT_DIR/firestore.rules"
 
           if grep -Fq "yb_mobile_money_journal" "$RULES"; then
             echo "REGLE JOURNAL DES ENVOIS : PRESENTE"
           else
             echo "::warning::La collection yb_mobile_money_journal n'a pas encore de règle Firestore dédiée dans V39."
-            echo "::warning::L'interface PC est prête, mais la synchronisation Cloud du Journal des envois devra être traitée avant son utilisation complète."
+            echo "::warning::La synchronisation Cloud du Journal des envois devra être traitée avant son utilisation complète."
           fi
 
-      # ============================================================
-      # INSTALL FIREBASE CLI
-      # ============================================================
       - name: Install Firebase CLI
         shell: bash
         run: |
           set -euo pipefail
-
           npm install --global firebase-tools
-
           firebase --version
 
-      # ============================================================
-      # VERIFY FIREBASE SERVICE ACCOUNT SECRET
-      # ============================================================
       - name: Verify Firebase deployment credentials
         shell: bash
         env:
@@ -404,12 +282,8 @@ jobs:
           set -euo pipefail
 
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::error::Le secret FIREBASE_SERVICE_ACCOUNT est manquant."
-            echo ""
-            echo "Ajoutez dans GitHub :"
-            echo "Settings > Secrets and variables > Actions > New repository secret"
-            echo ""
-            echo "Nom : FIREBASE_SERVICE_ACCOUNT_JSON"
+            echo "::error::Le secret Firebase est manquant."
+            echo "Nom attendu : FIREBASE_SERVICE_ACCOUNT_JSON"
             exit 1
           fi
 
@@ -421,12 +295,8 @@ jobs:
           }
 
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-
           echo "CREDENTIALS FIREBASE : PRESENTES"
 
-      # ============================================================
-      # FIREBASE AUTHENTICATION
-      # ============================================================
       - name: Authenticate with Firebase
         shell: bash
         run: |
@@ -434,27 +304,45 @@ jobs:
 
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
 
-          firebase projects:list \
-            --json \
-            > "$RUNNER_TEMP/firebase-projects.json"
+          firebase projects:list --json > "$RUNNER_TEMP/firebase-projects.json"
 
-          grep -Fq \
-            '"projectId":"youngestsbusiness"' \
-            "$RUNNER_TEMP/firebase-projects.json" || {
-              echo "::error::Le compte de service n'a pas accès au projet youngestsbusiness."
-              exit 1
-            }
+          # Accepte le JSON avec ou sans espaces autour des deux-points.
+          if ! grep -Eq \
+            '"projectId"[[:space:]]*:[[:space:]]*"youngestsbusiness"' \
+            "$RUNNER_TEMP/firebase-projects.json"; then
+            echo "::error::Le projet youngestsbusiness n'a pas été trouvé dans la liste Firebase accessible au compte de service."
+            echo "Diagnostic : structure de la réponse Firebase (sans afficher de données secrètes) :"
+            node -e '
+              const fs = require("fs");
+              const p = process.argv[1];
+              try {
+                const d = JSON.parse(fs.readFileSync(p, "utf8"));
+                const show = x => {
+                  if (Array.isArray(x)) return x.map(show);
+                  if (x && typeof x === "object") {
+                    const o = {};
+                    for (const [k,v] of Object.entries(x)) {
+                      o[k] = /projectId|project_id|error|status|result|projects/i.test(k)
+                        ? show(v) : (v && typeof v === "object" ? show(v) : undefined);
+                    }
+                    return o;
+                  }
+                  return x;
+                };
+                console.log(JSON.stringify(show(d), null, 2));
+              } catch {
+                console.log("La réponse n'est pas un JSON valide.");
+              }
+            ' "$RUNNER_TEMP/firebase-projects.json"
+            exit 1
+          fi
 
           echo "ACCES FIREBASE : OK"
 
-      # ============================================================
-      # FINAL WEB CHECK
-      # ============================================================
       - name: Final V39 Web Admin check
         shell: bash
         run: |
           set -euo pipefail
-
           WEB="$PROJECT_DIR/web-admin"
 
           test -s "$WEB/index.html"
@@ -468,12 +356,8 @@ jobs:
           echo "WEB ADMIN : OK"
           echo "LOGO : OK"
           echo "JOURNAL ENVOIS : OK"
-          echo "FIREBASE : OK"
           echo "=========================================="
 
-      # ============================================================
-      # DEPLOY FIREBASE HOSTING
-      # ============================================================
       - name: Deploy V39 PC Admin to Firebase Hosting
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
@@ -487,9 +371,6 @@ jobs:
             --project youngestsbusiness \
             --non-interactive
 
-      # ============================================================
-      # SHOW DEPLOYMENT URL
-      # ============================================================
       - name: Show V39 PC Admin URL
         shell: bash
         run: |
