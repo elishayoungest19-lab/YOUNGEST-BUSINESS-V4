@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V42 Android and V42 Web
+name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V43 Web
 
 on:
   workflow_dispatch:
@@ -158,7 +158,7 @@ jobs:
           retention-days: 30
 
   deploy-web:
-    name: Deploy V42 Web Admin and Firestore rules
+    name: Deploy V43 Web Admin and Firestore rules
     runs-on: ubuntu-latest
     needs: build-android
     steps:
@@ -175,19 +175,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
           npm install --global firebase-tools
-      - name: Find and extract exact V42 Web ZIP
+      - name: Find and extract exact V43 Web ZIP
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V42-WEB-ADMIN-JOURNAUX-PDF-HEURE-RECHERCHE-CORRIGE.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V43-WEB-GESTION-PRETS-RECHERCHE-PDF.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V42 corrigé introuvable."
-            find "$GITHUB_WORKSPACE" -type f -iname '*V42*.zip' -print || true
+            echo "::error::ZIP Web V43 gestion des prêts introuvable."
+            find "$GITHUB_WORKSPACE" -type f -iname '*V43*.zip' -print || true
             exit 1
           fi
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v42-web"
+          DEST="$RUNNER_TEMP/v43-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
@@ -202,7 +202,7 @@ jobs:
           test -f "$WEB_PROJECT_DIR/web-admin/index.html"
           test -f "$WEB_PROJECT_DIR/web-admin/app.js"
           echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
-      - name: Verify V42 Web assets and JavaScript
+      - name: Verify V43 Web assets and JavaScript
         shell: bash
         run: |
           set -euo pipefail
@@ -211,7 +211,7 @@ jobs:
             echo "::error::Aucun fichier logo trouvé dans le Web Admin V42."
             exit 1
           fi
-          echo "Source Web V42 et JavaScript vérifiés."
+          echo "Source Web V43 et JavaScript vérifiés."
       - name: Authenticate Firebase
         shell: bash
         env:
@@ -223,7 +223,7 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
           chmod 600 "$CREDENTIALS"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-      - name: Deploy V42 Hosting and Firestore rules
+      - name: Deploy V43 Hosting and Firestore rules
         shell: bash
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
@@ -232,6 +232,6 @@ jobs:
       - name: Confirm V42 deployment
         shell: bash
         run: |
-          echo "Web Admin V42 déployé."
+          echo "Web Admin V43 déployé."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
