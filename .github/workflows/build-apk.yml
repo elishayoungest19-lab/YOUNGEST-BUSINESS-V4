@@ -5,12 +5,15 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '0 6 * * *' # 07:00 heure de Kinshasa (UTC+1)
 
 permissions:
   contents: read
 
 jobs:
   build-android:
+    if: github.event_name != 'schedule'
     name: Build and verify V42 Android APK
     runs-on: ubuntu-latest
     steps:
@@ -158,7 +161,8 @@ jobs:
           retention-days: 30
 
   deploy-web:
-    name: Deploy V46 Web Admin, automatic échéances and Firestore rules
+    if: github.event_name != 'schedule'
+    name: Deploy V46 Web Admin and Firestore rules (sans Cloud Functions)
     runs-on: ubuntu-latest
     needs: build-android
     steps:
@@ -212,10 +216,8 @@ jobs:
           grep -q 'yb_loan_contact_logs' "$WEB_PROJECT_DIR/web-admin/app.js"
           grep -q 'yb_loan_contact_logs' "$WEB_PROJECT_DIR/firestore.rules"
           grep -q 'yb_admin_due_notifications' "$WEB_PROJECT_DIR/firestore.rules"
-          grep -q 'processLoanDueRemindersV46' "$WEB_PROJECT_DIR/functions/index.js"
-          grep -q 'onSchedule' "$WEB_PROJECT_DIR/functions/index.js"
-          test -s "$WEB_PROJECT_DIR/functions/package.json"
-          node --check "$WEB_PROJECT_DIR/functions/index.js"
+          test -s "$WEB_PROJECT_DIR/.github/scripts/process-due-reminders.js"
+          node --check "$WEB_PROJECT_DIR/.github/scripts/process-due-reminders.js"
           grep -q 'contact-action' "$WEB_PROJECT_DIR/web-admin/styles.css"
           if ! find "$WEB_PROJECT_DIR/web-admin" -type f -iname '*logo*' -print -quit | grep -q .; then
             echo "::error::Aucun fichier logo trouvé dans le Web Admin V45."
@@ -238,10 +240,56 @@ jobs:
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
           set -euo pipefail
-          firebase deploy --only hosting,firestore:rules,functions --project youngestsbusiness --non-interactive
+          firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
       - name: Confirm V45 deployment
         shell: bash
         run: |
-          echo "Web Admin V46 déployé. La fonction planifiée est déployée avec le site."
+          echo "Web Admin V46 déployé. Le traitement quotidien est exécuté par GitHub Actions, sans Cloud Functions."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
+
+
+  process-due-reminders:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Process daily loan reminders without Cloud Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Find and extract V46 source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V46*WEB*RAPPELS*AUTOMATIQUES*ECHEANCES*.zip' -print -quit)"
+          if [ -z "$ZIP_PATH" ]; then echo "::error::ZIP source V46 introuvable."; exit 1; fi
+          DEST="$RUNNER_TEMP/v46-reminders"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP_PATH" -d "$DEST"
+          ROOT="$(find "$DEST" -type f -path '*/.github/scripts/process-due-reminders.js' -print -quit)"
+          if [ -z "$ROOT" ]; then echo "::error::Script de rappels V46 introuvable dans le ZIP."; exit 1; fi
+          PROJECT_DIR="$(dirname "$(dirname "$(dirname "$ROOT")")")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Authenticate Firebase Admin SDK
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || { echo "::error::Secret FIREBASE_SERVICE_ACCOUNT_JSON manquant."; exit 1; }
+          CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
+          chmod 600 "$CREDENTIALS"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
+      - name: Install Firebase Admin SDK
+        shell: bash
+        run: npm install --prefix "$PROJECT_DIR/functions" --no-audit --no-fund
+      - name: Process due reminders and notify administration
+        shell: bash
+        env:
+          FIREBASE_PROJECT_ID: youngestsbusiness
+        run: node "$PROJECT_DIR/.github/scripts/process-due-reminders.js"
+        
