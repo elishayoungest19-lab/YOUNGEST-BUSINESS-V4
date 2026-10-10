@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V46 Web
+name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V47 Web
 
 on:
   workflow_dispatch:
@@ -6,40 +6,35 @@ on:
     branches:
       - main
   schedule:
-    - cron: '0 6 * * *' # 07:00 Kinshasa (UTC+1)
+    - cron: '0 6 * * *' # 07:00 heure de Kinshasa (UTC+1)
 
 permissions:
   contents: read
 
 jobs:
   build-android:
-    if: github.event_name == 'push'
+    if: github.event_name != 'schedule'
     name: Build and verify V42 Android APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
       - name: Find and extract V42 Android source
         shell: bash
         run: |
@@ -66,7 +61,6 @@ jobs:
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
           test -f "$PROJECT_DIR/app/google-services.json"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
       - name: Set Android version V42
         shell: bash
         run: |
@@ -94,7 +88,6 @@ jobs:
           grep -Eq 'versionCode[[:space:]]+42([[:space:]]|$)' "$GRADLE_FILE"
           grep -Fq "versionName '1.35.0'" "$GRADLE_FILE"
           grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$GRADLE_FILE"
-
       - name: Verify Android and Firebase source
         shell: bash
         run: |
@@ -113,7 +106,6 @@ jobs:
           grep -Fq 'yb_lumicash_journal' "$RULES"
           node --check "$FUNCTIONS"
           node --check "$WEB"
-
       - name: Configure release signing
         shell: bash
         env:
@@ -136,14 +128,12 @@ jobs:
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
             echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
-
       - name: Build signed V42 APK
         shell: bash
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
           gradle --no-daemon clean :app:assembleRelease --stacktrace
-
       - name: Verify APK version and signature
         shell: bash
         run: |
@@ -155,7 +145,6 @@ jobs:
           echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
           echo "$BADGING" | grep -Fq "versionCode='42'"
           echo "$BADGING" | grep -Fq "versionName='1.35.0'"
-
       - name: Prepare V42 APK artifact
         shell: bash
         run: |
@@ -163,7 +152,6 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/release-output"
           cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V42.apk"
           sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V42.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
       - name: Upload V42 APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -173,18 +161,16 @@ jobs:
           retention-days: 30
 
   deploy-web:
-    if: github.event_name == 'push'
-    name: Deploy V46 Web Admin and Firestore rules (sans Cloud Functions)
+    if: github.event_name != 'schedule'
+    name: Deploy V47 Web Admin and Firestore rules (sans Cloud Functions)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install archive tools and Firebase CLI
         shell: bash
         run: |
@@ -192,36 +178,36 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
           npm install --global firebase-tools
-
-      - name: Find and extract V46 Web ZIP
+      - name: Find and extract exact V47 Web ZIP
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V46*WEB*RAPPELS*AUTOMATIQUES*ECHEANCES*.zip' -print -quit)"
+          # Accepter les suffixes ajoutés au nom du ZIP, par exemple (1) ou -1.
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V47*WEB*RAPPELS*AUTOMATIQUES*ECHEANCES*.zip' -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V46 introuvable."
-            find "$GITHUB_WORKSPACE" -type f -iname '*V46*.zip' -print || true
+            echo "::error::ZIP Web V47 introuvable. Archives V47 disponibles :"
+            find "$GITHUB_WORKSPACE" -type f -iname '*V47*.zip' -print || true
             exit 1
           fi
-          echo "Archive Web V46 sélectionnée : $ZIP_PATH"
+          echo "Archive Web V47 sélectionnée : $ZIP_PATH"
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v46-web"
+          DEST="$RUNNER_TEMP/v47-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
           FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
           if [ -z "$FIREBASE_CONFIG" ]; then
-            echo "::error::firebase.json absent du ZIP Web V46."
+            echo "::error::firebase.json absent du ZIP Web V47."
             exit 1
           fi
           WEB_PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
           test -f "$WEB_PROJECT_DIR/.firebaserc"
+          grep -q '"default": "youngestsbusiness"' "$WEB_PROJECT_DIR/.firebaserc" || { echo "::error::Le projet Firebase de l’archive n’est pas youngestsbusiness."; exit 1; }
           test -f "$WEB_PROJECT_DIR/firestore.rules"
           test -f "$WEB_PROJECT_DIR/web-admin/index.html"
           test -f "$WEB_PROJECT_DIR/web-admin/app.js"
           echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Verify V46 Web assets and JavaScript
+      - name: Verify V47 Web assets, scheduled reminders and JavaScript
         shell: bash
         run: |
           set -euo pipefail
@@ -233,8 +219,11 @@ jobs:
           test -s "$WEB_PROJECT_DIR/.github/scripts/process-due-reminders.js"
           node --check "$WEB_PROJECT_DIR/.github/scripts/process-due-reminders.js"
           grep -q 'contact-action' "$WEB_PROJECT_DIR/web-admin/styles.css"
-          echo "Source Web V46 et JavaScript vérifiés."
-
+          if ! find "$WEB_PROJECT_DIR/web-admin" -type f -iname '*logo*' -print -quit | grep -q .; then
+            echo "::error::Aucun fichier logo trouvé dans le Web Admin V47."
+            exit 1
+          fi
+          echo "Source Web V47 et JavaScript vérifiés."
       - name: Authenticate Firebase
         shell: bash
         env:
@@ -246,20 +235,22 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
           chmod 600 "$CREDENTIALS"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-
-      - name: Deploy V46 Hosting and Firestore rules (sans Cloud Functions)
+      - name: Deploy V47 Hosting, Firestore rules and scheduled Cloud Functions
         shell: bash
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
           set -euo pipefail
           firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
-
-      - name: Confirm V46 deployment
+      - name: Verify live V47 Hosting response
         shell: bash
         run: |
-          echo "Web Admin V46 déployé. Le traitement quotidien est exécuté par GitHub Actions, sans Cloud Functions."
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://youngestsbusiness.web.app/ -o "$RUNNER_TEMP/v47-live-index.html"
+          grep -q 'YOUNGEST' "$RUNNER_TEMP/v47-live-index.html" || { echo "::error::Le site répond, mais le contenu attendu n’a pas été trouvé."; exit 1; }
+          echo "Web Admin V47 déployé et réponse HTTP vérifiée."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
+
 
   process-due-reminders:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -268,34 +259,23 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Find and extract V46 source ZIP
+      - name: Find and extract V47 source ZIP
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V46*WEB*RAPPELS*AUTOMATIQUES*ECHEANCES*.zip' -print -quit)"
-          if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP source V46 introuvable."
-            find "$GITHUB_WORKSPACE" -type f -iname '*V46*.zip' -print || true
-            exit 1
-          fi
-          DEST="$RUNNER_TEMP/v46-reminders"
-          rm -rf "$DEST"
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V47*WEB*RAPPELS*AUTOMATIQUES*ECHEANCES*.zip' -print -quit)"
+          if [ -z "$ZIP_PATH" ]; then echo "::error::ZIP source V47 introuvable."; exit 1; fi
+          DEST="$RUNNER_TEMP/v47-reminders"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
           ROOT="$(find "$DEST" -type f -path '*/.github/scripts/process-due-reminders.js' -print -quit)"
-          if [ -z "$ROOT" ]; then
-            echo "::error::Script de rappels V46 introuvable dans le ZIP."
-            exit 1
-          fi
+          if [ -z "$ROOT" ]; then echo "::error::Script de rappels V47 introuvable dans le ZIP."; exit 1; fi
           PROJECT_DIR="$(dirname "$(dirname "$(dirname "$ROOT")")")"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
       - name: Authenticate Firebase Admin SDK
         shell: bash
         env:
@@ -307,11 +287,9 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
           chmod 600 "$CREDENTIALS"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-
       - name: Install Firebase Admin SDK
         shell: bash
         run: npm install --prefix "$PROJECT_DIR/functions" --no-audit --no-fund
-
       - name: Process due reminders and notify administration
         shell: bash
         env:
