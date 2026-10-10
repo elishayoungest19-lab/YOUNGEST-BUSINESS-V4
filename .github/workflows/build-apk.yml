@@ -179,13 +179,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V45-WEB-ALERTES-ECHEANCES-CONTACT-CLIENT.zip"
-          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
+          # Accepter les suffixes ajoutés au nom du ZIP, par exemple (1) ou -1.
+          ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -iname '*V45*WEB*ALERTES*ECHEANCES*CONTACT*CLIENT*.zip' -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V45 alertes et contact client introuvable."
+            echo "::error::ZIP Web V45 introuvable. Archives V45 disponibles :"
             find "$GITHUB_WORKSPACE" -type f -iname '*V45*.zip' -print || true
             exit 1
           fi
+          echo "Archive Web V45 sélectionnée : $ZIP_PATH"
           unzip -t "$ZIP_PATH"
           DEST="$RUNNER_TEMP/v45-web"
           rm -rf "$DEST"
@@ -233,9 +234,10 @@ jobs:
         run: |
           set -euo pipefail
           firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
-      - name: Confirm V44 deployment
+      - name: Confirm V45 deployment
         shell: bash
         run: |
           echo "Web Admin V45 déployé."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
+          
