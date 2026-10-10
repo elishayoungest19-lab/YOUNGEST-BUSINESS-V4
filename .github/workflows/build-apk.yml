@@ -179,7 +179,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V44-WEB-GESTION-PRETS-RECHERCHE-PDF.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V44-WEB-GESTION-COMPLETE-PRETS-REMBOURSEMENTS.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
             echo "::error::ZIP Web V44 gestion des prêts introuvable."
@@ -187,7 +187,7 @@ jobs:
             exit 1
           fi
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v43-web"
+          DEST="$RUNNER_TEMP/v44-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
@@ -208,7 +208,7 @@ jobs:
           set -euo pipefail
           node --check "$WEB_PROJECT_DIR/web-admin/app.js"
           if ! find "$WEB_PROJECT_DIR/web-admin" -type f -iname '*logo*' -print -quit | grep -q .; then
-            echo "::error::Aucun fichier logo trouvé dans le Web Admin V42."
+            echo "::error::Aucun fichier logo trouvé dans le Web Admin V44."
             exit 1
           fi
           echo "Source Web V44 et JavaScript vérifiés."
@@ -229,9 +229,10 @@ jobs:
         run: |
           set -euo pipefail
           firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
-      - name: Confirm V42 deployment
+      - name: Confirm V44 deployment
         shell: bash
         run: |
           echo "Web Admin V44 déployé."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
+          
