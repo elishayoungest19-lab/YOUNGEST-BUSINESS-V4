@@ -1,4 +1,4 @@
-name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V44 Web
+name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V45 Web
 
 on:
   workflow_dispatch:
@@ -158,7 +158,7 @@ jobs:
           retention-days: 30
 
   deploy-web:
-    name: Deploy V44 Web Admin and Firestore rules
+    name: Deploy V45 Web Admin, échéances and Firestore rules
     runs-on: ubuntu-latest
     needs: build-android
     steps:
@@ -175,25 +175,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
           npm install --global firebase-tools
-      - name: Find and extract exact V44 Web ZIP
+      - name: Find and extract exact V45 Web ZIP
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V44-WEB-GESTION-COMPLETE-PRETS-REMBOURSEMENTS.zip"
+          ZIP_NAME="YOUNGEST-BUSINESS-V45-WEB-ALERTES-ECHEANCES-CONTACT-CLIENT.zip"
           ZIP_PATH="$(find "$GITHUB_WORKSPACE" -type f -name "$ZIP_NAME" -print -quit)"
           if [ -z "$ZIP_PATH" ]; then
-            echo "::error::ZIP Web V44 gestion des prêts introuvable."
-            find "$GITHUB_WORKSPACE" -type f -iname '*V44*.zip' -print || true
+            echo "::error::ZIP Web V45 alertes et contact client introuvable."
+            find "$GITHUB_WORKSPACE" -type f -iname '*V45*.zip' -print || true
             exit 1
           fi
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v44-web"
+          DEST="$RUNNER_TEMP/v45-web"
           rm -rf "$DEST"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
           FIREBASE_CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
           if [ -z "$FIREBASE_CONFIG" ]; then
-            echo "::error::firebase.json absent du ZIP Web V44."
+            echo "::error::firebase.json absent du ZIP Web V45."
             exit 1
           fi
           WEB_PROJECT_DIR="$(dirname "$FIREBASE_CONFIG")"
@@ -202,16 +202,20 @@ jobs:
           test -f "$WEB_PROJECT_DIR/web-admin/index.html"
           test -f "$WEB_PROJECT_DIR/web-admin/app.js"
           echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
-      - name: Verify V44 Web assets and JavaScript
+      - name: Verify V45 Web assets, alerts and JavaScript
         shell: bash
         run: |
           set -euo pipefail
           node --check "$WEB_PROJECT_DIR/web-admin/app.js"
+          grep -q 'data-page="alerts"' "$WEB_PROJECT_DIR/web-admin/index.html"
+          grep -q 'yb_loan_contact_logs' "$WEB_PROJECT_DIR/web-admin/app.js"
+          grep -q 'yb_loan_contact_logs' "$WEB_PROJECT_DIR/firestore.rules"
+          grep -q 'contact-action' "$WEB_PROJECT_DIR/web-admin/styles.css"
           if ! find "$WEB_PROJECT_DIR/web-admin" -type f -iname '*logo*' -print -quit | grep -q .; then
-            echo "::error::Aucun fichier logo trouvé dans le Web Admin V44."
+            echo "::error::Aucun fichier logo trouvé dans le Web Admin V45."
             exit 1
           fi
-          echo "Source Web V44 et JavaScript vérifiés."
+          echo "Source Web V45 et JavaScript vérifiés."
       - name: Authenticate Firebase
         shell: bash
         env:
@@ -223,7 +227,7 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
           chmod 600 "$CREDENTIALS"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-      - name: Deploy V44 Hosting and Firestore rules
+      - name: Deploy V45 Hosting and Firestore rules
         shell: bash
         working-directory: ${{ env.WEB_PROJECT_DIR }}
         run: |
@@ -232,7 +236,6 @@ jobs:
       - name: Confirm V44 deployment
         shell: bash
         run: |
-          echo "Web Admin V44 déployé."
+          echo "Web Admin V45 déployé."
           echo "Projet Firebase : youngestsbusiness"
           echo "Web Admin : https://youngestsbusiness.web.app"
-          
