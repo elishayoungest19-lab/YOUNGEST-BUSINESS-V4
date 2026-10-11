@@ -14,7 +14,7 @@ permissions:
 
 env:
   FIREBASE_PROJECT_ID: youngestsbusiness
-  V47_WEB_ZIP: "YOUNGEST-BUSINESS-V47-WEB-RAPPELS-AUTOMATIQUES-ECHEANCES-source (1).zip"
+  V47_WEB_ZIP: "YOUNGEST-BUSINESS-V47-ARCHIVAGE-RESTAURATION-source.zip"
 
 jobs:
   build-android:
@@ -238,8 +238,6 @@ jobs:
           grep -q 'yb_loan_contact_logs' "$RULES"
           grep -q 'yb_admin_due_notifications' "$RULES"
 
-          # Arrêter avant déploiement si le code d'archivage/restauration
-          # n'est pas présent dans la source V47.
           if ! grep -Eiq 'archive|archiv|restore|restaur' "$APP"; then
             echo "::error::Fonction d'archivage/restauration non détectée dans app.js."
             exit 1
@@ -338,4 +336,3 @@ jobs:
           set -euo pipefail
           node --check "$REMINDER_SCRIPT"
           node "$REMINDER_SCRIPT"
-          
