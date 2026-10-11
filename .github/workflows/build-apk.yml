@@ -14,7 +14,7 @@ permissions:
 
 env:
   FIREBASE_PROJECT_ID: youngestsbusiness
-  V47_WEB_ZIP: "YOUNGEST-BUSINESS-V47-ARCHIVAGE-RESTAURATION-source.zip"
+  V47_WEB_ZIP: "YOUNGEST-BUSINESS-V47-ARCHIVAGE-RESTAURATION-source-1.zip"
 
 jobs:
   build-android:
@@ -135,8 +135,10 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build signed V42 APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle --no-daemon clean :app:assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
 
       - name: Verify APK version and signature
         shell: bash
@@ -202,6 +204,7 @@ jobs:
           fi
 
           echo "Archive Web V47 sélectionnée : $V47_WEB_ZIP"
+          sha256sum "$ZIP_PATH"
           unzip -t "$ZIP_PATH"
 
           DEST="$RUNNER_TEMP/v47-web"
@@ -259,10 +262,14 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
 
       - name: Deploy V47 Hosting and Firestore rules
-        working-directory: ${{ env.WEB_PROJECT_DIR }}
+        shell: bash
         run: |
           set -euo pipefail
-          firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
+          firebase deploy \
+            --only hosting,firestore:rules \
+            --project "$FIREBASE_PROJECT_ID" \
+            --non-interactive \
+            --config "$WEB_PROJECT_DIR/firebase.json"
 
       - name: Verify live V47 Hosting response
         shell: bash
@@ -304,6 +311,7 @@ jobs:
           DEST="$RUNNER_TEMP/v47-reminders"
           rm -rf "$DEST"
           mkdir -p "$DEST"
+          unzip -t "$ZIP_PATH"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
           SCRIPT="$(find "$DEST" -type f -path '*/.github/scripts/process-due-reminders.js' -print -quit)"
@@ -336,3 +344,4 @@ jobs:
           set -euo pipefail
           node --check "$REMINDER_SCRIPT"
           node "$REMINDER_SCRIPT"
+          
