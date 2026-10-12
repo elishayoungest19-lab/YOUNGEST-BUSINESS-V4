@@ -1,27 +1,100 @@
-
-name: Build YOUNGEST'S BUSINESS V42 Android and Deploy V47 Web
+name: YOUNGEST'S BUSINESS V49 Wi-Fi Development Checks
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
-  schedule:
-    - cron: '0 6 * * *'
+      - wifi-dev
+    paths:
+      - 'YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip'
+      - '.github/workflows/yb-wifi-v49-dev.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: yb-wifi-v49-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-  FIREBASE_PROJECT_ID: youngestsbusiness
-  V47_WEB_ZIP: "YOUNGEST-BUSINESS-V47-ARCHIVAGE-RESTAURATION-source-1.zip"
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip
 
 jobs:
-  build-android:
-    if: github.event_name != 'schedule'
-    name: Build and verify V42 Android APK
+  validate-source:
+    name: Validate V49 source and Wi-Fi Web prototype
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Install validation tools
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate archive and expected files
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          test -s "$GITHUB_WORKSPACE/$SOURCE_ZIP" || {
+            echo "::error::Missing source ZIP: $SOURCE_ZIP"
+            exit 1
+          }
+          unzip -t "$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          mkdir -p "$RUNNER_TEMP/yb-v49"
+          unzip -q "$GITHUB_WORKSPACE/$SOURCE_ZIP" -d "$RUNNER_TEMP/yb-v49"
+          ROOT="$RUNNER_TEMP/yb-v49/YOUNGEST-BUSINESS-V49-YB-WIFI"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/web-admin/styles.css"
+          test -s "$ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          test -s "$ROOT/app/build.gradle"
+          test -s "$ROOT/firestore.rules"
+          test -s "$ROOT/.firebaserc"
+          grep -q 'youngestsbusiness' "$ROOT/.firebaserc"
+          echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Validate Web JavaScript and Wi-Fi prototype markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check "$SOURCE_ROOT/web-admin/app.js"
+          grep -Eiq 'YOUNGEST.?S B WIFI|B WIFI|WIFI' "$SOURCE_ROOT/web-admin/index.html"
+          TARIFF_DOC="$SOURCE_ROOT/README-V49-YB-WIFI-TARIFS-COUPON-UNIQUE.md"
+          test -s "$TARIFF_DOC"
+          grep -Eiq '2[[:space:]]*000|2000' "$TARIFF_DOC"
+          grep -Eiq '3[[:space:]]*500|3500' "$TARIFF_DOC"
+          grep -Eiq '5[[:space:]]*000|5000' "$TARIFF_DOC"
+          grep -Eiq '8[[:space:]]*000|8000' "$TARIFF_DOC"
+          echo "Web prototype syntax and tariff markers passed."
+
+      - name: Report Android Wi-Fi integration status
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$SOURCE_ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          if grep -Eiq 'YOUNGEST.?S B WIFI|yb_wifi|wifiCoupon|couponWifi|wifiPage' "$MAIN"; then
+            echo "ANDROID_WIFI_MARKER=present" >> "$GITHUB_ENV"
+            echo "Android Wi-Fi marker found; source still requires full functional review."
+          else
+            echo "ANDROID_WIFI_MARKER=missing" >> "$GITHUB_ENV"
+            echo "::warning::Wi-Fi UI is not yet integrated into MainActivity.java. This workflow will not claim Android Wi-Fi support."
+          fi
+
+      - name: Upload validated V49 source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V49-WIFI-SOURCE-VALIDATED
+          path: ${{ env.SOURCE_ZIP }}
+          if-no-files-found: error
+          retention-days: 30
+
+  build-android-baseline:
+    name: Build Android baseline for integration testing
+    runs-on: ubuntu-latest
+    needs: validate-source
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,305 +116,57 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find and extract V42 Android source
+      - name: Extract V49 source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_NAME="YOUNGEST-BUSINESS-V42-ANDROID-RECHERCHE-HEURE-HISTORIQUE-ACTUALISATION-PDF-LOGO-source.zip"
-          ZIP_PATH="$GITHUB_WORKSPACE/$ZIP_NAME"
-
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::Archive Android V42 introuvable : $ZIP_NAME"
-            find "$GITHUB_WORKSPACE" -type f -iname '*V42*ANDROID*.zip' -print || true
-            exit 1
-          fi
-
-          unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v42-android"
-          mkdir -p "$DEST"
-          unzip -q "$ZIP_PATH" -d "$DEST"
-
-          SETTINGS="$(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
-          test -n "$SETTINGS"
-          PROJECT_DIR="$(dirname "$SETTINGS")"
-
+          unzip -t "$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          mkdir -p "$RUNNER_TEMP/yb-v49-android"
+          unzip -q "$GITHUB_WORKSPACE/$SOURCE_ZIP" -d "$RUNNER_TEMP/yb-v49-android"
+          PROJECT_DIR="$RUNNER_TEMP/yb-v49-android/YOUNGEST-BUSINESS-V49-YB-WIFI"
+          test -f "$PROJECT_DIR/settings.gradle"
           test -f "$PROJECT_DIR/build.gradle"
           test -f "$PROJECT_DIR/app/build.gradle"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
           test -f "$PROJECT_DIR/app/google-services.json"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Set Android version V42
+      - name: Set non-production test version
         shell: bash
         run: |
           set -euo pipefail
           python3 - "$PROJECT_DIR/app/build.gradle" <<'PY'
           import pathlib, re, sys
           p = pathlib.Path(sys.argv[1])
-          s = p.read_text(encoding="utf-8")
-          s, c = re.subn(r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$", r"\g<1>42\g<2>", s, count=1)
-          s, n = re.subn(r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$""", r"\g<1>'1.35.0'\g<2>", s, count=1)
+          s = p.read_text(encoding='utf-8')
+          s, c = re.subn(r'(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$', r'\g<1>49\g<2>', s, count=1)
+          s, n = re.subn(r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''', r"\g<1>'1.42.0-wifi-dev'\g<2>", s, count=1)
           if c != 1 or n != 1:
-              raise SystemExit("Impossible de définir versionCode/versionName.")
-          p.write_text(s, encoding="utf-8")
+              raise SystemExit('Could not set test version in app/build.gradle')
+          p.write_text(s, encoding='utf-8')
           PY
-
-          grep -Eq 'versionCode[[:space:]]+42([[:space:]]|$)' "$PROJECT_DIR/app/build.gradle"
-          grep -Fq "versionName '1.35.0'" "$PROJECT_DIR/app/build.gradle"
+          grep -Eq 'versionCode[[:space:]]+49([[:space:]]|$)' "$PROJECT_DIR/app/build.gradle"
           grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$PROJECT_DIR/app/build.gradle"
 
-      - name: Verify Android and Firebase source
+      - name: Build unsigned baseline APK
         shell: bash
         run: |
           set -euo pipefail
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          SERVICE="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/AppNotificationService.java"
-
-          test -s "$MAIN"
-          test -s "$SERVICE"
-          test -s "$PROJECT_DIR/firestore.rules"
-          test -s "$PROJECT_DIR/functions/index.js"
-          test -s "$PROJECT_DIR/web-admin/app.js"
-
-          grep -Fq 'createLumicashJournalEntry' "$PROJECT_DIR/functions/index.js"
-          grep -Fq 'yb_lumicash_journal' "$PROJECT_DIR/firestore.rules"
-          node --check "$PROJECT_DIR/functions/index.js"
-          node --check "$PROJECT_DIR/web-admin/app.js"
-
-      - name: Configure release signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-
-          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          chmod 600 "$KEYSTORE_FILE"
-
-          KEY_ALIAS="$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
-          test -n "$KEY_ALIAS"
-
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-          } >> "$GITHUB_ENV"
-
-      - name: Build signed V42 APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
-
-      - name: Verify APK version and signature
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleDebug --stacktrace
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+          echo "::warning::This is a debug baseline APK. The V49 Wi-Fi feature has not been verified as integrated into Android. Do not distribute as a production release."
 
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
-
-          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
-          echo "$BADGING" | grep -Fq "versionCode='42'"
-          echo "$BADGING" | grep -Fq "versionName='1.35.0'"
-
-      - name: Prepare V42 APK artifact
-        run: |
-          set -euo pipefail
-          mkdir -p release-output
-          cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" release-output/YOUNGEST-BUSINESS-V42.apk
-          sha256sum release-output/YOUNGEST-BUSINESS-V42.apk > release-output/SHA256SUMS.txt
-
-      - name: Upload V42 APK artifact
+      - name: Upload Android baseline artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V42-ANDROID
+          name: YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG-NOT-PRODUCTION
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
 
-  deploy-web:
-    if: github.event_name != 'schedule'
-    name: Deploy V47 Web Admin and Firestore rules
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y unzip
-          npm install --global firebase-tools
-
-      - name: Find and extract exact V47 Web ZIP
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP_PATH="$GITHUB_WORKSPACE/$V47_WEB_ZIP"
-
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::Archive V47 attendue introuvable : $V47_WEB_ZIP"
-            echo "Archives V47 présentes :"
-            find "$GITHUB_WORKSPACE" -type f -iname '*V47*.zip' -print || true
-            exit 1
-          fi
-
-          echo "Archive Web V47 sélectionnée : $V47_WEB_ZIP"
-          sha256sum "$ZIP_PATH"
-          unzip -t "$ZIP_PATH"
-
-          DEST="$RUNNER_TEMP/v47-web"
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
-          unzip -q "$ZIP_PATH" -d "$DEST"
-
-          CONFIG="$(find "$DEST" -type f -name firebase.json -print -quit)"
-          test -n "$CONFIG"
-          WEB_PROJECT_DIR="$(dirname "$CONFIG")"
-
-          test -f "$WEB_PROJECT_DIR/.firebaserc"
-          grep -q '"default": "youngestsbusiness"' "$WEB_PROJECT_DIR/.firebaserc"
-          test -f "$WEB_PROJECT_DIR/firestore.rules"
-          test -f "$WEB_PROJECT_DIR/web-admin/index.html"
-          test -f "$WEB_PROJECT_DIR/web-admin/app.js"
-          test -f "$WEB_PROJECT_DIR/web-admin/styles.css"
-
-          echo "WEB_PROJECT_DIR=$WEB_PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Verify V47 archive and reversible archive support
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="$WEB_PROJECT_DIR/web-admin/app.js"
-          RULES="$WEB_PROJECT_DIR/firestore.rules"
-          REMINDERS="$WEB_PROJECT_DIR/.github/scripts/process-due-reminders.js"
-
-          node --check "$APP"
-          test -s "$REMINDERS"
-          node --check "$REMINDERS"
-
-          grep -q 'yb_loan_contact_logs' "$APP"
-          grep -q 'yb_loan_contact_logs' "$RULES"
-          grep -q 'yb_admin_due_notifications' "$RULES"
-
-          if ! grep -Eiq 'archive|archiv|restore|restaur' "$APP"; then
-            echo "::error::Fonction d'archivage/restauration non détectée dans app.js."
-            exit 1
-          fi
-
-          echo "Contrôles V47 terminés."
-
-      - name: Authenticate Firebase
-        shell: bash
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          set -euo pipefail
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
-
-          CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
-          chmod 600 "$CREDENTIALS"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-
-      - name: Deploy V47 Hosting and Firestore rules
-        shell: bash
-        run: |
-          set -euo pipefail
-          firebase deploy \
-            --only hosting,firestore:rules \
-            --project "$FIREBASE_PROJECT_ID" \
-            --non-interactive \
-            --config "$WEB_PROJECT_DIR/firebase.json"
-
-      - name: Verify live V47 Hosting response
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
-            https://youngestsbusiness.web.app/ \
-            -o "$RUNNER_TEMP/v47-live-index.html"
-
-          grep -qi 'YOUNGEST' "$RUNNER_TEMP/v47-live-index.html"
-          echo "Réponse Hosting vérifiée : https://youngestsbusiness.web.app"
-
-  process-due-reminders:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Process daily loan reminders without Cloud Functions
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Find and extract exact V47 source ZIP
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP_PATH="$GITHUB_WORKSPACE/$V47_WEB_ZIP"
-
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "::error::Archive V47 attendue introuvable : $V47_WEB_ZIP"
-            find "$GITHUB_WORKSPACE" -type f -iname '*V47*.zip' -print || true
-            exit 1
-          fi
-
-          DEST="$RUNNER_TEMP/v47-reminders"
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
-          unzip -t "$ZIP_PATH"
-          unzip -q "$ZIP_PATH" -d "$DEST"
-
-          SCRIPT="$(find "$DEST" -type f -path '*/.github/scripts/process-due-reminders.js' -print -quit)"
-          test -n "$SCRIPT"
-
-          PROJECT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT")")")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "REMINDER_SCRIPT=$SCRIPT" >> "$GITHUB_ENV"
-
-      - name: Authenticate Firebase Admin SDK
-        shell: bash
-        env:
-          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-        run: |
-          set -euo pipefail
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
-
-          CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$CREDENTIALS"
-          chmod 600 "$CREDENTIALS"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$CREDENTIALS" >> "$GITHUB_ENV"
-
-      - name: Install Firebase Admin SDK
-        run: npm install --prefix "$PROJECT_DIR/functions" --no-audit --no-fund
-
-      - name: Verify and process due reminders
-        env:
-          FIREBASE_PROJECT_ID: youngestsbusiness
-        run: |
-          set -euo pipefail
-          node --check "$REMINDER_SCRIPT"
-          node "$REMINDER_SCRIPT"
-          
+# Deliberately no Firebase deploy, no Firestore rules deployment, and no signing secrets.
+# Production deploy remains in the existing workflow until V49 Wi-Fi is reviewed and tested.
