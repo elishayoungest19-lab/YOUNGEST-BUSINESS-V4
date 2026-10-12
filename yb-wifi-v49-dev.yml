@@ -1,0 +1,172 @@
+name: YOUNGEST'S BUSINESS V49 Wi-Fi Development Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - wifi-dev
+    paths:
+      - 'YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip'
+      - '.github/workflows/yb-wifi-v49-dev.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yb-wifi-v49-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip
+
+jobs:
+  validate-source:
+    name: Validate V49 source and Wi-Fi Web prototype
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install validation tools
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate archive and expected files
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          test -s "$GITHUB_WORKSPACE/$SOURCE_ZIP" || {
+            echo "::error::Missing source ZIP: $SOURCE_ZIP"
+            exit 1
+          }
+          unzip -t "$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          mkdir -p "$RUNNER_TEMP/yb-v49"
+          unzip -q "$GITHUB_WORKSPACE/$SOURCE_ZIP" -d "$RUNNER_TEMP/yb-v49"
+          ROOT="$RUNNER_TEMP/yb-v49/YOUNGEST-BUSINESS-V49-YB-WIFI"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/web-admin/styles.css"
+          test -s "$ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          test -s "$ROOT/app/build.gradle"
+          test -s "$ROOT/firestore.rules"
+          test -s "$ROOT/.firebaserc"
+          grep -q 'youngestsbusiness' "$ROOT/.firebaserc"
+          echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Validate Web JavaScript and Wi-Fi prototype markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check "$SOURCE_ROOT/web-admin/app.js"
+          grep -Eiq 'YOUNGEST.?S B WIFI|B WIFI|WIFI' "$SOURCE_ROOT/web-admin/index.html"
+          TARIFF_DOC="$SOURCE_ROOT/README-V49-YB-WIFI-TARIFS-COUPON-UNIQUE.md"
+          test -s "$TARIFF_DOC"
+          grep -Eiq '2[[:space:]]*000|2000' "$TARIFF_DOC"
+          grep -Eiq '3[[:space:]]*500|3500' "$TARIFF_DOC"
+          grep -Eiq '5[[:space:]]*000|5000' "$TARIFF_DOC"
+          grep -Eiq '8[[:space:]]*000|8000' "$TARIFF_DOC"
+          echo "Web prototype syntax and tariff markers passed."
+
+      - name: Report Android Wi-Fi integration status
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$SOURCE_ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          if grep -Eiq 'YOUNGEST.?S B WIFI|yb_wifi|wifiCoupon|couponWifi|wifiPage' "$MAIN"; then
+            echo "ANDROID_WIFI_MARKER=present" >> "$GITHUB_ENV"
+            echo "Android Wi-Fi marker found; source still requires full functional review."
+          else
+            echo "ANDROID_WIFI_MARKER=missing" >> "$GITHUB_ENV"
+            echo "::warning::Wi-Fi UI is not yet integrated into MainActivity.java. This workflow will not claim Android Wi-Fi support."
+          fi
+
+      - name: Upload validated V49 source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V49-WIFI-SOURCE-VALIDATED
+          path: ${{ env.SOURCE_ZIP }}
+          if-no-files-found: error
+          retention-days: 30
+
+  build-android-baseline:
+    name: Build Android baseline for integration testing
+    runs-on: ubuntu-latest
+    needs: validate-source
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extract V49 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          mkdir -p "$RUNNER_TEMP/yb-v49-android"
+          unzip -q "$GITHUB_WORKSPACE/$SOURCE_ZIP" -d "$RUNNER_TEMP/yb-v49-android"
+          PROJECT_DIR="$RUNNER_TEMP/yb-v49-android/YOUNGEST-BUSINESS-V49-YB-WIFI"
+          test -f "$PROJECT_DIR/settings.gradle"
+          test -f "$PROJECT_DIR/build.gradle"
+          test -f "$PROJECT_DIR/app/build.gradle"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/app/google-services.json"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Set non-production test version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR/app/build.gradle" <<'PY'
+          import pathlib, re, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding='utf-8')
+          s, c = re.subn(r'(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$', r'\g<1>49\g<2>', s, count=1)
+          s, n = re.subn(r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''', r"\g<1>'1.42.0-wifi-dev'\g<2>", s, count=1)
+          if c != 1 or n != 1:
+              raise SystemExit('Could not set test version in app/build.gradle')
+          p.write_text(s, encoding='utf-8')
+          PY
+          grep -Eq 'versionCode[[:space:]]+49([[:space:]]|$)' "$PROJECT_DIR/app/build.gradle"
+          grep -Fq "applicationId 'com.aistudio.youngestbiz.mbkz'" "$PROJECT_DIR/app/build.gradle"
+
+      - name: Build unsigned baseline APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleDebug --stacktrace
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p "$GITHUB_WORKSPACE/release-output"
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+          echo "::warning::This is a debug baseline APK. The V49 Wi-Fi feature has not been verified as integrated into Android. Do not distribute as a production release."
+
+      - name: Upload Android baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG-NOT-PRODUCTION
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 30
+
+# Deliberately no Firebase deploy, no Firestore rules deployment, and no signing secrets.
+# Production deploy remains in the existing workflow until V49 Wi-Fi is reviewed and tested.
