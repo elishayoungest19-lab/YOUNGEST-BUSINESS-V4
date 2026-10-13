@@ -1,5 +1,4 @@
-
-name: YOUNGEST'S BUSINESS V50 Wi-Fi Signed Candidate
+name: YOUNGEST'S BUSINESS V51 Wi-Fi Build
 
 on:
   workflow_dispatch:
@@ -7,22 +6,22 @@ on:
     branches:
       - main
     paths:
-      - YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
+      - YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE.zip
       - .github/workflows/build-apk.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: yb-wifi-v50-signed-${{ github.ref }}
+  group: yb-wifi-v51-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE.zip
 
 jobs:
   build-android:
-    name: Build and verify V50 signed release candidate
+    name: Build and verify V51 signed APK
     runs-on: ubuntu-latest
 
     steps:
@@ -49,7 +48,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Extract and verify V50 source
+      - name: Extract and verify V51 source
         shell: bash
         run: |
           set -euo pipefail
@@ -57,13 +56,13 @@ jobs:
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
           test -s "$ZIP_PATH" || {
-            echo "::error::ZIP source V50 introuvable à la racine du dépôt."
+            echo "::error::ZIP V51 introuvable à la racine du dépôt. Vérifiez le nom exact du fichier."
             exit 1
           }
 
           unzip -t "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/v50-source"
+          DEST="$RUNNER_TEMP/v51-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -73,8 +72,8 @@ jobs:
             CANDIDATE="$(dirname "$SETTINGS")"
 
             if [ -s "$CANDIDATE/app/build.gradle" ] \
-              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] \
-              && [ -s "$CANDIDATE/app/google-services.json" ]; then
+              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" \
+              ] && [ -s "$CANDIDATE/app/google-services.json" ]; then
               PROJECT_DIR="$CANDIDATE"
               break
             fi
@@ -85,7 +84,7 @@ jobs:
           )
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Projet Android Gradle introuvable dans le ZIP."
+            echo "::error::Projet Android Gradle introuvable dans le ZIP V51."
             exit 1
           fi
 
@@ -93,7 +92,7 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Set V50 version
+      - name: Set V51 version
         shell: bash
         run: |
           set -euo pipefail
@@ -110,22 +109,20 @@ jobs:
 
           text, code_count = re.subn(
               r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
-              r"\g<1>50\g<2>",
+              r"\g<1>51\g<2>",
               text,
               count=1
           )
 
           text, name_count = re.subn(
               r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$""",
-              r"\g<1>'1.50.0-wifi-candidate'\g<2>",
+              r"\g<1>'1.51.0-wifi'\g<2>",
               text,
               count=1
           )
 
           if code_count != 1 or name_count != 1:
-              raise SystemExit(
-                  "Impossible de définir sûrement la version V50."
-              )
+              raise SystemExit("Impossible de définir sûrement la version V51.")
 
           if "com.aistudio.youngestbiz.mbkz" not in text:
               raise SystemExit("Application ID attendu introuvable.")
@@ -133,7 +130,7 @@ jobs:
           path.write_text(text, encoding="utf-8")
           PY
 
-          grep -Eq 'versionCode[[:space:]]+50([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Eq 'versionCode[[:space:]]+51([[:space:]]|$)' "$GRADLE_FILE"
           grep -Fq "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"
 
       - name: Configure production signing
@@ -186,7 +183,7 @@ jobs:
             echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
 
-      - name: Build V50 release APK
+      - name: Build V51 release APK
         shell: bash
         run: |
           set -euo pipefail
@@ -212,27 +209,27 @@ jobs:
             | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
 
           echo "$BADGING" \
-            | grep -Fq "versionCode='50'"
+            | grep -Fq "versionCode='51'"
 
           echo "$BADGING" \
-            | grep -Fq "versionName='1.50.0-wifi-candidate'"
+            | grep -Fq "versionName='1.51.0-wifi'"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V51-WIFI-SIGNED.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V51-WIFI-SIGNED.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-      - name: Upload signed V50 candidate
+      - name: Upload signed V51 APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE-NOT-FINAL
+          name: YOUNGEST-BUSINESS-V51-WIFI-SIGNED
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
 
-# Candidate build only.
-# No Firebase Hosting deployment or Firestore rules deployment.
+# Android APK build only.
+# Firebase Hosting and Firestore rules are not deployed by this workflow.
