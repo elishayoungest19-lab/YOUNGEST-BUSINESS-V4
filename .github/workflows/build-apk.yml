@@ -1,4 +1,5 @@
-name: YOUNGEST'S BUSINESS V49 Wi-Fi Development Checks
+
+name: YOUNGEST'S BUSINESS V50 Wi-Fi Integration Checks
 
 on:
   workflow_dispatch:
@@ -6,23 +7,24 @@ on:
     branches:
       - main
     paths:
-      - 'YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip'
-      - '.github/workflows/yb-wifi-v49-dev.yml'
+      - 'YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV.zip'
+      - '.github/workflows/build-apk.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: yb-wifi-v49-dev-${{ github.ref }}
+  group: yb-wifi-v50-dev-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V49-COMPLET-WIFI-V48-V49-source.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV.zip
 
 jobs:
   validate-source:
-    name: Validate V49 source and Wi-Fi Web prototype
+    name: Validate V50 source and Wi-Fi integration baseline
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,26 +41,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y unzip
 
-      - name: Find source ZIP and detect project folders
+      - name: Extract and detect V50 project
         shell: bash
         run: |
           set -euo pipefail
+
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
           if [ ! -s "$ZIP_PATH" ]; then
-            echo "::error::Archive introuvable : $SOURCE_ZIP"
-            echo "Archives ZIP présentes à la racine :"
-            find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -printf '%f\n' || true
+            echo "::error::V50 source archive not found: $SOURCE_ZIP"
             exit 1
           fi
 
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/yb-v49"
-          rm -rf "$DEST"
+          DEST="$RUNNER_TEMP/yb-v50"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
-          # Detect the project root by its expected Android and Web files;
-          # do not assume a fixed top-level folder name inside the ZIP.
           ROOT=""
           while IFS= read -r -d '' WEB_INDEX; do
             CANDIDATE="$(dirname "$(dirname "$WEB_INDEX")")"
@@ -73,9 +71,10 @@ jobs:
           done < <(find "$DEST" -type f -path '*/web-admin/index.html' -print0)
 
           if [ -z "$ROOT" ]; then
-            echo "::error::Structure source non reconnue. Il faut un même dossier projet contenant web-admin/index.html, app/, settings.gradle, firestore.rules et .firebaserc."
-            echo "Fichiers détectés pour diagnostic :"
-            find "$DEST" -maxdepth 5 \( -name settings.gradle -o -name index.html -o -name MainActivity.java -o -name .firebaserc \) -print || true
+            echo "::error::V50 project structure not recognized."
+            find "$DEST" -maxdepth 6 \
+              \( -name settings.gradle -o -name index.html \
+              -o -name MainActivity.java -o -name .firebaserc \) -print || true
             exit 1
           fi
 
@@ -86,53 +85,44 @@ jobs:
           grep -q 'youngestsbusiness' "$ROOT/.firebaserc"
 
           echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "Source projet détectée : $ROOT"
+          echo "V50 project detected: $ROOT"
 
-      - name: Validate Web JavaScript and tariff document
+      - name: Validate Web JavaScript and Wi-Fi markers
         shell: bash
         run: |
           set -euo pipefail
+
           node --check "$SOURCE_ROOT/web-admin/app.js"
 
-          if ! grep -Eiq 'YOUNGEST.?S B WIFI|B WIFI|WIFI' "$SOURCE_ROOT/web-admin/index.html"; then
-            echo "::warning::Marqueur Wi-Fi non trouvé dans web-admin/index.html."
-          fi
-
-          TARIFF_DOC="$SOURCE_ROOT/README-V49-YB-WIFI-TARIFS-COUPON-UNIQUE.md"
-          if [ -s "$TARIFF_DOC" ]; then
-            grep -Eiq '2[[:space:]]*000|2000' "$TARIFF_DOC"
-            grep -Eiq '3[[:space:]]*500|3500' "$TARIFF_DOC"
-            grep -Eiq '5[[:space:]]*000|5000' "$TARIFF_DOC"
-            grep -Eiq '8[[:space:]]*000|8000' "$TARIFF_DOC"
+          if grep -Eiq 'YOUNGEST.?S B WIFI|B WIFI|WIFI' \
+            "$SOURCE_ROOT/web-admin/index.html"; then
+            echo "Wi-Fi marker found in Web Admin."
           else
-            echo "::warning::Le document de tarifs attendu est absent; vérifiez les tarifs manuellement."
+            echo "::warning::Wi-Fi marker not found in Web Admin."
           fi
 
-          echo "Contrôle de syntaxe Web terminé."
-
-      - name: Report Android Wi-Fi integration status
-        shell: bash
-        run: |
-          set -euo pipefail
           MAIN="$SOURCE_ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           if grep -Eiq 'YOUNGEST.?S B WIFI|yb_wifi|wifiCoupon|couponWifi|wifiPage' "$MAIN"; then
-            echo "Android : marqueur Wi-Fi détecté; une revue fonctionnelle reste nécessaire."
+            echo "Android Wi-Fi marker found; functional testing is still required."
           else
-            echo "::warning::L'interface Wi-Fi Android ne semble pas intégrée à MainActivity.java. La réussite du build ne prouvera pas que la fonctionnalité Wi-Fi existe."
+            echo "::warning::Android Wi-Fi integration marker not found."
           fi
 
-      - name: Upload validated V49 source archive
+          echo "Web JavaScript syntax check passed."
+
+      - name: Upload validated V50 source
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V49-WIFI-SOURCE-VALIDATED
+          name: YOUNGEST-BUSINESS-V50-WIFI-SOURCE-VALIDATED
           path: ${{ env.SOURCE_ZIP }}
           if-no-files-found: error
           retention-days: 30
 
   build-android-baseline:
-    name: Build Android debug baseline (not production)
+    name: Build V50 Android debug APK (not production)
     runs-on: ubuntu-latest
     needs: validate-source
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -154,17 +144,14 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Extract source and detect Android project
+      - name: Extract V50 Android project
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
-          test -s "$ZIP_PATH"
-          unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/yb-v49-android"
-          rm -rf "$DEST"
+
+          DEST="$RUNNER_TEMP/yb-v50-android"
           mkdir -p "$DEST"
-          unzip -q "$ZIP_PATH" -d "$DEST"
+          unzip -q "$GITHUB_WORKSPACE/$SOURCE_ZIP" -d "$DEST"
 
           PROJECT_DIR=""
           while IFS= read -r -d '' SETTINGS; do
@@ -175,36 +162,80 @@ jobs:
               PROJECT_DIR="$CANDIDATE"
               break
             fi
-          done < <(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
+          done < <(find "$DEST" -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Projet Android Gradle non trouvé dans l'archive."
+            echo "::error::Android Gradle project not found in V50 archive."
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android détecté : $PROJECT_DIR"
+          echo "Android project detected: $PROJECT_DIR"
 
-      - name: Build debug baseline APK
+      - name: Set non-production test version
         shell: bash
         run: |
           set -euo pipefail
+
+          python3 - "$PROJECT_DIR/app/build.gradle" <<'PY'
+          import pathlib, re, sys
+
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8")
+
+          s, code_count = re.subn(
+              r'(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$',
+              r'\g<1>50\g<2>', s, count=1
+          )
+          s, name_count = re.subn(
+              r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''',
+              r"\g<1>'1.50.0-wifi-dev'\g<2>", s, count=1
+          )
+
+          if code_count != 1 or name_count != 1:
+              raise SystemExit(
+                  "Could not safely set V50 versionCode/versionName. "
+                  "Review app/build.gradle manually."
+              )
+
+          p.write_text(s, encoding="utf-8")
+          PY
+
+          grep -Eq 'versionCode[[:space:]]+50([[:space:]]|$)' \
+            "$PROJECT_DIR/app/build.gradle"
+
+          grep -Fq 'com.aistudio.youngestbiz.mbkz' \
+            "$PROJECT_DIR/app/build.gradle"
+
+      - name: Build V50 debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
           gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleDebug --stacktrace
+
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-          echo "::warning::APK de débogage uniquement. Ne pas distribuer comme version de production. La présence du module Wi-Fi fonctionnel n'est pas garantie."
+          cp "$APK" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION.apk"
 
-      - name: Upload Android debug baseline artifact
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION.apk" \
+            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+          echo "::warning::Debug APK only. Not signed for production. Wi-Fi functionality must be tested separately."
+
+      - name: Upload V50 Android test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V49-ANDROID-BASELINE-DEBUG-NOT-PRODUCTION
+          name: YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
 
-# This workflow intentionally does not deploy Firebase Hosting or Firestore rules.
-# It does not use production signing secrets. Production remains managed by build-apk.yml.
+# Development checks only.
+# No Firebase Hosting deployment, no Firestore rules deployment,
+# and no production signing secrets are used.
