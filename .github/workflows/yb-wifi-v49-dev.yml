@@ -16,6 +16,7 @@ concurrency:
 
 env:
   SOURCE_ZIP: YOUNGEST-BUSINESS-V53-WIFI-COMPLETE-SOURCE.zip
+  FIREBASE_PROJECT: youngestsbusiness
 
 jobs:
   build-android:
@@ -25,27 +26,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Verify Web Admin JavaScript
-        run: node --check web-admin/app.js
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android SDK packages
-        shell: bash
-        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
 
       - name: Extract and verify V53 source
         shell: bash
@@ -60,38 +40,90 @@ jobs:
           DEST="$RUNNER_TEMP/v53-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
+
           PROJECT_DIR=""
           while IFS= read -r -d '' SETTINGS; do
             CANDIDATE="$(dirname "$SETTINGS")"
-            if [ -s "$CANDIDATE/app/build.gradle" ] && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] && [ -s "$CANDIDATE/app/google-services.json" ]; then
+            if [ -s "$CANDIDATE/app/build.gradle" ] \
+              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] \
+              && [ -s "$CANDIDATE/app/google-services.json" ]; then
               PROJECT_DIR="$CANDIDATE"
               break
             fi
           done < <(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
-          if [ -z "$PROJECT_DIR" ]; then echo "::error::Android project not found in V53 source ZIP."; exit 1; fi
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "::error::Android Gradle project not found in V53 source ZIP."
+            exit 1
+          fi
+
           test -s "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          test -s "$PROJECT_DIR/web-admin/index.html"
+          test -s "$PROJECT_DIR/web-admin/app.js"
           test -s "$PROJECT_DIR/web-admin/assets/youngests-b-wifi-logo.png"
           node --check "$PROJECT_DIR/web-admin/app.js"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "## V53 source verified" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Web Admin JavaScript: syntax OK" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Official Wi-Fi logo: found" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Set V53 version
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          {
+            echo "## V53 source verified"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Source ZIP: \`$SOURCE_ZIP\`"
+            echo "- Android project: found"
+            echo "- Web Admin JavaScript: syntax OK"
+            echo "- Wi-Fi logo: found"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Set V53 version and verify application ID
         shell: bash
         run: |
           set -euo pipefail
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
           python3 - "$GRADLE_FILE" <<'PY'
-          import pathlib,re,sys
-          p=pathlib.Path(sys.argv[1]); s=p.read_text()
-          s,c=re.subn(r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",r"\g<1>53\g<2>",s,count=1)
-          s,n=re.subn(r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''',r"\g<1>'1.53.0-wifi'\g<2>",s,count=1)
-          if c!=1 or n!=1: raise SystemExit('Cannot set V53 version markers')
-          if not re.search(r'''applicationId\s+['"]com\.aistudio\.youngestbiz\.mbkz['"]''',s): raise SystemExit('Application ID mismatch')
-          p.write_text(s)
+          import pathlib
+          import re
+          import sys
+
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8")
+          s, code_count = re.subn(
+              r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
+              r"\g<1>53\g<2>", s, count=1
+          )
+          s, name_count = re.subn(
+              r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''',
+              r"\g<1>'1.53.0-wifi'\g<2>", s, count=1
+          )
+          if code_count != 1 or name_count != 1:
+              raise SystemExit("Cannot set V53 version markers safely.")
+          if not re.search(
+              r'''applicationId\s+['"]com\.aistudio\.youngestbiz\.mbkz['"]''', s
+          ):
+              raise SystemExit("Expected applicationId not found.")
+          p.write_text(s, encoding="utf-8")
           PY
+          grep -Eq '^[[:space:]]*versionCode[[:space:]]+53([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "1.53.0-wifi" "$GRADLE_FILE"
 
       - name: Configure production signing
         shell: bash
@@ -104,12 +136,15 @@ jobs:
           test -n "$KEYSTORE_BASE64" || { echo "::error::KEYSTORE_BASE64 missing"; exit 1; }
           test -n "$KEYSTORE_PASSWORD" || { echo "::error::KEYSTORE_PASSWORD missing"; exit 1; }
           test -n "$KEY_PASSWORD" || { echo "::error::KEY_PASSWORD missing"; exit 1; }
+
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
           test -s "$KEYSTORE_FILE"
           chmod 600 "$KEYSTORE_FILE"
+
           KEY_ALIAS="$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
-          test -n "$KEY_ALIAS" || { echo "::error::Keystore alias missing"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "::error::Keystore alias missing or unreadable"; exit 1; }
+
           {
             echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
             echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
@@ -117,22 +152,39 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build V53 release APK
-        run: gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
 
-      - name: Verify V53 APK and signature
+      - name: Verify V53 APK package, version and signature
         shell: bash
         run: |
           set -euo pipefail
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          test -s "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
           echo "$BADGING" | grep -Fq "versionCode='53'"
           echo "$BADGING" | grep -Fq "versionName='1.53.0-wifi'"
+
           mkdir -p "$GITHUB_WORKSPACE/release-output"
           cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V53-WIFI-SIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V53-WIFI-SIGNED.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-          echo "## ✅ V53 APK compiled and signature verified" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V53-WIFI-SIGNED.apk" \
+            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+
+          {
+            echo "## ✅ V53 APK compiled and signature verified"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Package: \`com.aistudio.youngestbiz.mbkz\`"
+            echo "- Version: \`1.53.0-wifi\` (code 53)"
+            echo "- APK signature: verified"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload signed V53 APK
         uses: actions/upload-artifact@v4
@@ -142,40 +194,99 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Publish build status
+        if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## V53 Android build result"
+            echo
+            echo "- Status: **$JOB_STATUS**"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Branch: \`$GITHUB_REF_NAME\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy-web:
     name: Deploy Web Admin and Firestore rules
     runs-on: ubuntu-latest
     needs: build-android
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Verify V53 source ZIP exists
-        run: test -s "$SOURCE_ZIP"
-      - name: Extract V53 Web Admin and Firebase configuration
+
+      - name: Extract and validate Firebase project from V53 source
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/v53-deploy"
-          unzip -q "$SOURCE_ZIP" -d "$RUNNER_TEMP/v53-deploy"
-          echo "DEPLOY_DIR=$RUNNER_TEMP/v53-deploy" >> "$GITHUB_ENV"
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          test -s "$ZIP_PATH" || { echo "::error::V53 source ZIP missing: $SOURCE_ZIP"; exit 1; }
+          DEST="$RUNNER_TEMP/v53-deploy"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP_PATH" -d "$DEST"
+
+          DEPLOY_DIR=""
+          while IFS= read -r -d '' CONFIG; do
+            CANDIDATE="$(dirname "$CONFIG")"
+            if [ -s "$CANDIDATE/.firebaserc" ] \
+              && [ -s "$CANDIDATE/web-admin/index.html" ] \
+              && [ -s "$CANDIDATE/firestore.rules" ]; then
+              DEPLOY_DIR="$CANDIDATE"
+              break
+            fi
+          done < <(find "$DEST" -type f -name firebase.json -print0)
+
+          if [ -z "$DEPLOY_DIR" ]; then
+            echo "::error::Could not locate firebase.json with .firebaserc, web-admin/index.html and firestore.rules in V53 ZIP."
+            exit 1
+          fi
+
+          node --check "$DEPLOY_DIR/web-admin/app.js"
+          echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
+          {
+            echo "## V53 deployment source verified"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Firebase config: found"
+            echo "- Web Admin entry page: found"
+            echo "- Firestore rules: found"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
       - name: Deploy Hosting and Firestore rules
+        shell: bash
         working-directory: ${{ runner.temp }}/v53-deploy
-        run: firebase deploy --only hosting,firestore:rules --project youngestsbusiness --non-interactive
-      - name: Publish deployment summary
+        run: |
+          set -euo pipefail
+          # DEPLOY_DIR is discovered from the extracted ZIP; change into it explicitly.
+          cd "$DEPLOY_DIR"
+          firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT" --non-interactive
+
+      - name: Publish deployment status
         if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "## V53 deployment status"
+            echo "## V53 Web Admin and Firestore deployment"
+            echo
+            echo "- Status: **$JOB_STATUS**"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Hosting target: \`https://youngestsbusiness.web.app\`"
-            echo "- Rules and Hosting deployment runs only after successful Android build."
+            echo "- Deployment is attempted only after Android build succeeds."
           } >> "$GITHUB_STEP_SUMMARY"
