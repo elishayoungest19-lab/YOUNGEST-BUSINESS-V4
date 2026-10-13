@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE.zip
+      - YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE-3.zip
       - .github/workflows/build-apk.yml
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE-3.zip
 
 jobs:
   build-android:
@@ -56,7 +56,7 @@ jobs:
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
           test -s "$ZIP_PATH" || {
-            echo "::error::ZIP V51 introuvable à la racine du dépôt. Vérifiez le nom exact du fichier."
+            echo "::error::ZIP V51 introuvable à la racine du dépôt. Vérifiez le nom exact."
             exit 1
           }
 
@@ -72,8 +72,8 @@ jobs:
             CANDIDATE="$(dirname "$SETTINGS")"
 
             if [ -s "$CANDIDATE/app/build.gradle" ] \
-              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" \
-              ] && [ -s "$CANDIDATE/app/google-services.json" ]; then
+              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] \
+              && [ -s "$CANDIDATE/app/google-services.json" ]; then
               PROJECT_DIR="$CANDIDATE"
               break
             fi
@@ -122,7 +122,9 @@ jobs:
           )
 
           if code_count != 1 or name_count != 1:
-              raise SystemExit("Impossible de définir sûrement la version V51.")
+              raise SystemExit(
+                  "Impossible de définir sûrement la version V51."
+              )
 
           if "com.aistudio.youngestbiz.mbkz" not in text:
               raise SystemExit("Application ID attendu introuvable.")
