@@ -1,4 +1,5 @@
-name: YOUNGEST'S BUSINESS V50 Wi-Fi Integration Checks
+
+name: YOUNGEST'S BUSINESS V50 Wi-Fi Signed Candidate
 
 on:
   workflow_dispatch:
@@ -6,139 +7,23 @@ on:
     branches:
       - main
     paths:
-      - 'YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV-1.zip'
-      - '.github/workflows/build-apk.yml'
+      - YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
+      - .github/workflows/build-apk.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: yb-wifi-v50-dev-${{ github.ref }}
+  group: yb-wifi-v50-signed-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV-1.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
 
 jobs:
-  validate-source:
-    name: Validate V50 source and Wi-Fi integration baseline
+  build-android:
+    name: Build and verify V50 signed release candidate
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install archive tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y unzip
-
-      - name: Extract and detect V50 project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
-
-          if [ ! -s "$ZIP_PATH" ]; then
-            echo "::error::V50 source archive not found: $SOURCE_ZIP"
-            echo "ZIP files available at repository root:"
-            find "$GITHUB_WORKSPACE" -maxdepth 1 \
-              -type f -iname '*.zip' -printf '%f\n' || true
-            exit 1
-          fi
-
-          unzip -t "$ZIP_PATH"
-
-          DEST="$RUNNER_TEMP/yb-v50"
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
-          unzip -q "$ZIP_PATH" -d "$DEST"
-
-          ROOT=""
-
-          while IFS= read -r -d '' WEB_INDEX; do
-            CANDIDATE="$(dirname "$(dirname "$WEB_INDEX")")"
-
-            if [ -s "$CANDIDATE/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java" ] \
-              && [ -s "$CANDIDATE/app/build.gradle" ] \
-              && { [ -s "$CANDIDATE/settings.gradle" ] || [ -s "$CANDIDATE/settings.gradle.kts" ]; } \
-              && [ -s "$CANDIDATE/firestore.rules" ] \
-              && [ -s "$CANDIDATE/.firebaserc" ]; then
-              ROOT="$CANDIDATE"
-              break
-            fi
-          done < <(find "$DEST" -type f \
-            -path '*/web-admin/index.html' -print0)
-
-          if [ -z "$ROOT" ]; then
-            echo "::error::V50 project structure not recognized."
-            echo "Expected one project directory containing:"
-            echo "web-admin/index.html, app/, settings.gradle,"
-            echo "firestore.rules and .firebaserc."
-
-            find "$DEST" -maxdepth 7 \
-              \( -name settings.gradle \
-              -o -name index.html \
-              -o -name MainActivity.java \
-              -o -name .firebaserc \) -print || true
-
-            exit 1
-          fi
-
-          test -s "$ROOT/web-admin/app.js"
-          test -s "$ROOT/web-admin/styles.css"
-          test -s "$ROOT/app/src/main/AndroidManifest.xml"
-          test -s "$ROOT/app/google-services.json"
-
-          grep -q 'youngestsbusiness' "$ROOT/.firebaserc"
-
-          echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "V50 project detected: $ROOT"
-
-      - name: Validate Web JavaScript and Wi-Fi markers
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          node --check "$SOURCE_ROOT/web-admin/app.js"
-
-          if grep -Eiq 'YOUNGEST.?S B WIFI|B WIFI|WIFI' \
-            "$SOURCE_ROOT/web-admin/index.html"; then
-            echo "Wi-Fi marker found in Web Admin."
-          else
-            echo "::warning::Wi-Fi marker not found in Web Admin."
-          fi
-
-          MAIN="$SOURCE_ROOT/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          if grep -Eiq 'YOUNGEST.?S B WIFI|yb_wifi|wifiCoupon|couponWifi|wifiPage' "$MAIN"; then
-            echo "Android Wi-Fi marker found; functional testing is still required."
-          else
-            echo "::warning::Android Wi-Fi integration marker not found."
-          fi
-
-          echo "Web JavaScript syntax check passed."
-
-      - name: Upload validated V50 source
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V50-WIFI-SOURCE-VALIDATED
-          path: ${{ env.SOURCE_ZIP }}
-          if-no-files-found: error
-          retention-days: 30
-
-  build-android-baseline:
-    name: Build V50 Android debug APK (not production)
-    runs-on: ubuntu-latest
-    needs: validate-source
 
     steps:
       - name: Checkout repository
@@ -154,26 +39,31 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
-          sdkmanager "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Extract V50 Android project
+      - name: Extract and verify V50 source
         shell: bash
         run: |
           set -euo pipefail
 
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
-          test -s "$ZIP_PATH"
 
-          DEST="$RUNNER_TEMP/yb-v50-android"
-          rm -rf "$DEST"
+          test -s "$ZIP_PATH" || {
+            echo "::error::ZIP source V50 introuvable à la racine du dépôt."
+            exit 1
+          }
+
+          unzip -t "$ZIP_PATH"
+
+          DEST="$RUNNER_TEMP/v50-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -188,92 +78,161 @@ jobs:
               PROJECT_DIR="$CANDIDATE"
               break
             fi
-          done < <(find "$DEST" -type f \
-            \( -name settings.gradle \
-            -o -name settings.gradle.kts \) -print0)
+          done < <(
+            find "$DEST" -type f \
+              \( -name settings.gradle -o -name settings.gradle.kts \) \
+              -print0
+          )
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Android Gradle project not found in V50 archive."
+            echo "::error::Projet Android Gradle introuvable dans le ZIP."
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Android project detected: $PROJECT_DIR"
+          test -s "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
 
-      - name: Set non-production test version
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Set V50 version
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 - "$PROJECT_DIR/app/build.gradle" <<'PY'
+          GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
+
+          python3 - "$GRADLE_FILE" <<'PY'
           import pathlib
           import re
           import sys
 
-          p = pathlib.Path(sys.argv[1])
-          s = p.read_text(encoding="utf-8")
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
 
-          s, code_count = re.subn(
-              r'(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$',
-              r'\g<1>50\g<2>',
-              s,
+          text, code_count = re.subn(
+              r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
+              r"\g<1>50\g<2>",
+              text,
               count=1
           )
 
-          s, name_count = re.subn(
-              r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''',
-              r"\g<1>'1.50.0-wifi-dev'\g<2>",
-              s,
+          text, name_count = re.subn(
+              r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$""",
+              r"\g<1>'1.50.0-wifi-candidate'\g<2>",
+              text,
               count=1
           )
 
           if code_count != 1 or name_count != 1:
               raise SystemExit(
-                  "Could not safely set V50 versionCode/versionName. "
-                  "Review app/build.gradle manually."
+                  "Impossible de définir sûrement la version V50."
               )
 
-          p.write_text(s, encoding="utf-8")
+          if "com.aistudio.youngestbiz.mbkz" not in text:
+              raise SystemExit("Application ID attendu introuvable.")
+
+          path.write_text(text, encoding="utf-8")
           PY
 
-          grep -Eq 'versionCode[[:space:]]+50([[:space:]]|$)' \
-            "$PROJECT_DIR/app/build.gradle"
+          grep -Eq 'versionCode[[:space:]]+50([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"
 
-          grep -Fq 'com.aistudio.youngestbiz.mbkz' \
-            "$PROJECT_DIR/app/build.gradle"
+      - name: Configure production signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
 
-      - name: Build V50 debug APK
+          test -n "$KEYSTORE_BASE64" || {
+            echo "::error::Secret KEYSTORE_BASE64 manquant."
+            exit 1
+          }
+
+          test -n "$KEYSTORE_PASSWORD" || {
+            echo "::error::Secret KEYSTORE_PASSWORD manquant."
+            exit 1
+          }
+
+          test -n "$KEY_PASSWORD" || {
+            echo "::error::Secret KEY_PASSWORD manquant."
+            exit 1
+          }
+
+          KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode > "$KEYSTORE_FILE"
+
+          test -s "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+
+          KEY_ALIAS="$(
+            keytool -list -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+              | awk -F': ' '/^Alias name:/{print $2; exit}'
+          )"
+
+          test -n "$KEY_ALIAS" || {
+            echo "::error::Alias du keystore introuvable."
+            exit 1
+          }
+
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build V50 release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
+
+      - name: Verify APK package, version and signature
         shell: bash
         run: |
           set -euo pipefail
 
-          gradle --no-daemon \
-            -p "$PROJECT_DIR" \
-            clean :app:assembleDebug \
-            --stacktrace
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
 
-          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose --print-certs "$APK"
+
+          BADGING="$(
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK"
+          )"
+
+          echo "$BADGING" \
+            | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
+
+          echo "$BADGING" \
+            | grep -Fq "versionCode='50'"
+
+          echo "$BADGING" \
+            | grep -Fq "versionName='1.50.0-wifi-candidate'"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
 
           cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION.apk"
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk"
 
           sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION.apk" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
-          echo "::warning::Debug APK only. Not signed for production. Wi-Fi functionality must be tested separately."
-
-      - name: Upload V50 Android test artifacts
+      - name: Upload signed V50 candidate
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V50-ANDROID-DEBUG-NOT-PRODUCTION
+          name: YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE-NOT-FINAL
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
 
-# Development checks only.
-# No Firebase Hosting deployment, no Firestore rules deployment,
-# and no production signing secrets are used.
+# Candidate build only.
+# No Firebase Hosting deployment or Firestore rules deployment.
