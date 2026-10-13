@@ -1,5 +1,4 @@
-
-name: YOUNGEST'S BUSINESS V51 Wi-Fi Build
+name: YOUNGEST'S BUSINESS V52 Wi-Fi Build
 
 on:
   workflow_dispatch:
@@ -11,188 +10,78 @@ permissions:
   contents: read
 
 concurrency:
-  group: yb-wifi-v51-${{ github.ref }}-${{ github.sha }}
+  group: yb-wifi-v52-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
-  SOURCE_ZIP_PRIMARY: YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE-3.zip
-  SOURCE_ZIP_ALTERNATE: YOUNGEST-BUSINESS-V51-WIFI-WEB-ADMIN-FIREBASE-SOURCE.zip
-  SOURCE_ZIP_RESTORED: YOUNGEST-BUSINESS-V51-RESTORED-WIFI-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V52-WIFI-MODULE-RESTORED-SOURCE.zip
 
 jobs:
   build-android:
-    name: Build and verify V51 signed APK
+    name: Build and verify V52 signed APK
     runs-on: ubuntu-latest
     timeout-minutes: 40
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - name: Find and verify V51 source ZIP
+      - name: Extract and verify V52 source
         shell: bash
         run: |
           set -euo pipefail
-
-          ZIP_PATH=""
-
-          for NAME in \
-            "$SOURCE_ZIP_PRIMARY" \
-            "$SOURCE_ZIP_ALTERNATE" \
-            "$SOURCE_ZIP_RESTORED"; do
-            if [ -s "$GITHUB_WORKSPACE/$NAME" ]; then
-              ZIP_PATH="$GITHUB_WORKSPACE/$NAME"
-              break
-            fi
-          done
-
-          if [ -z "$ZIP_PATH" ]; then
-            {
-              echo "## ❌ Échec : ZIP source introuvable"
-              echo
-              echo "Commit : \`$GITHUB_SHA\`"
-              echo
-              echo "Aucun ZIP source V51 accepté n'est présent à la racine du dépôt."
-              echo
-              echo "Noms acceptés :"
-              echo "- \`$SOURCE_ZIP_PRIMARY\`"
-              echo "- \`$SOURCE_ZIP_ALTERNATE\`"
-              echo "- \`$SOURCE_ZIP_RESTORED\`"
-              echo
-              echo "Le commit existe, mais aucun APK n'a été produit."
-            } >> "$GITHUB_STEP_SUMMARY"
-
-            echo "::error::ZIP source V51 absent. Ajoutez le ZIP à la racine du dépôt."
+          ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          if [ ! -s "$ZIP_PATH" ]; then
+            echo "::error::V52 source ZIP missing at repository root: $SOURCE_ZIP"
             exit 1
           fi
-
-          echo "ZIP source sélectionné : $(basename "$ZIP_PATH")"
-          echo "SOURCE_ZIP_USED=$(basename "$ZIP_PATH")" >> "$GITHUB_ENV"
-
           unzip -t "$ZIP_PATH"
-
-          DEST="$RUNNER_TEMP/v51-source"
+          DEST="$RUNNER_TEMP/v52-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
-
           PROJECT_DIR=""
-
           while IFS= read -r -d '' SETTINGS; do
             CANDIDATE="$(dirname "$SETTINGS")"
-
-            if [ -s "$CANDIDATE/app/build.gradle" ] \
-              && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] \
-              && [ -s "$CANDIDATE/app/google-services.json" ]; then
+            if [ -s "$CANDIDATE/app/build.gradle" ] && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] && [ -s "$CANDIDATE/app/google-services.json" ]; then
               PROJECT_DIR="$CANDIDATE"
               break
             fi
-          done < <(
-            find "$DEST" -type f \
-              \( -name settings.gradle -o -name settings.gradle.kts \) \
-              -print0
-          )
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Projet Android Gradle introuvable ou incomplet dans le ZIP."
-            exit 1
-          fi
-
-          MAIN="$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-
-          test -s "$MAIN" || {
-            echo "::error::MainActivity.java introuvable."
-            exit 1
-          }
-
+          done < <(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
+          if [ -z "$PROJECT_DIR" ]; then echo "::error::Android project incomplete in V52 ZIP."; exit 1; fi
+          test -s "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          {
-            echo "## Vérification de la source"
-            echo
-            echo "- Commit : \`$GITHUB_SHA\`"
-            echo "- ZIP utilisé : \`$(basename "$ZIP_PATH")\`"
-            echo "- Projet Android : trouvé"
-            echo "- MainActivity.java : trouvé"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Set V51 version and verify application ID
+          { echo "## V52 source verified"; echo; echo "- Commit: \`$GITHUB_SHA\`"; echo "- Source: \`$SOURCE_ZIP\`"; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Set V52 version and verify application ID
         shell: bash
         run: |
           set -euo pipefail
-
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
-
-          python3 - "$GRADLE_FILE" <<'PY'
-          import pathlib
-          import re
-          import sys
-
-          path = pathlib.Path(sys.argv[1])
-          text = path.read_text(encoding="utf-8")
-
-          text, code_count = re.subn(
-              r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
-              r"\g<1>51\g<2>",
-              text,
-              count=1
-          )
-
-          text, name_count = re.subn(
-              r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$""",
-              r"\g<1>'1.51.0-wifi'\g<2>",
-              text,
-              count=1
-          )
-
-          if code_count != 1 or name_count != 1:
-              raise SystemExit(
-                  "Impossible de définir sûrement versionCode 51 "
-                  "et versionName 1.51.0-wifi."
-              )
-
-          if not re.search(
-              r"""applicationId\s+['"]com\.aistudio\.youngestbiz\.mbkz['"]""",
-              text
-          ):
-              raise SystemExit(
-                  "Application ID attendu introuvable dans app/build.gradle."
-              )
-
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          grep -Eq '^[[:space:]]*versionCode[[:space:]]+51([[:space:]]|$)' "$GRADLE_FILE"
-          grep -Fq "1.51.0-wifi" "$GRADLE_FILE"
-          grep -Fq "com.aistudio.youngestbiz.mbkz" "$GRADLE_FILE"
-
-          {
-            echo "## Version Android"
-            echo
-            echo "- Application ID : \`com.aistudio.youngestbiz.mbkz\`"
-            echo "- Version : \`1.51.0-wifi\`"
-            echo "- Version code : \`51\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
+          python3 - "$GRADLE_FILE" <<'PYCODE'
+          import pathlib, re, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text(encoding="utf-8")
+          s, c = re.subn(r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$", r"\g<1>52\g<2>", s, count=1)
+          s, n = re.subn(r"(?m)^([ \t]*versionName[ \t]+)['\"][^'\"]+['\"]([ \t]*)$", r"\g<1>'1.52.0-wifi'\g<2>", s, count=1)
+          if c != 1 or n != 1: raise SystemExit("Could not set V52 version markers.")
+          if not re.search(r"applicationId\s+['\"]com\.aistudio\.youngestbiz\.mbkz['\"]", s): raise SystemExit("Expected applicationId not found.")
+          p.write_text(s, encoding="utf-8")
+          PYCODE
+          grep -Eq 'versionCode[[:space:]]+52([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "1.52.0-wifi" "$GRADLE_FILE"
       - name: Configure production signing
         shell: bash
         env:
@@ -201,134 +90,49 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-
-          test -n "$KEYSTORE_BASE64" || {
-            echo "::error::Secret KEYSTORE_BASE64 manquant."
-            exit 1
-          }
-
-          test -n "$KEYSTORE_PASSWORD" || {
-            echo "::error::Secret KEYSTORE_PASSWORD manquant."
-            exit 1
-          }
-
-          test -n "$KEY_PASSWORD" || {
-            echo "::error::Secret KEY_PASSWORD manquant."
-            exit 1
-          }
-
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Secret KEYSTORE_BASE64 missing."; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "::error::Secret KEYSTORE_PASSWORD missing."; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "::error::Secret KEY_PASSWORD missing."; exit 1; }
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
-
-          printf '%s' "$KEYSTORE_BASE64" \
-            | base64 --decode > "$KEYSTORE_FILE"
-
-          test -s "$KEYSTORE_FILE"
-          chmod 600 "$KEYSTORE_FILE"
-
-          KEY_ALIAS="$(
-            keytool -list -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | awk -F': ' '/^Alias name:/{print $2; exit}'
-          )"
-
-          test -n "$KEY_ALIAS" || {
-            echo "::error::Alias du keystore introuvable."
-            exit 1
-          }
-
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-          } >> "$GITHUB_ENV"
-
-          echo "Keystore détecté et alias vérifié."
-
-      - name: Build V51 release APK
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          test -s "$KEYSTORE_FILE"; chmod 600 "$KEYSTORE_FILE"
+          KEY_ALIAS="$(keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
+          test -n "$KEY_ALIAS" || { echo "::error::Keystore alias not found."; exit 1; }
+          { echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"; echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"; echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"; } >> "$GITHUB_ENV"
+      - name: Build V52 release APK
         shell: bash
-        run: |
-          set -euo pipefail
-
-          gradle --no-daemon \
-            -p "$PROJECT_DIR" \
-            clean :app:assembleRelease \
-            --stacktrace
-
+        run: gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
       - name: Verify APK package, version and signature
         shell: bash
         run: |
           set -euo pipefail
-
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
-
-          test -s "$APK" || {
-            echo "::error::APK de sortie introuvable."
-            exit 1
-          }
-
+          test -s "$APK"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-
           BADGING="$("$AAPT" dump badging "$APK")"
-
-          echo "$BADGING" \
-            | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
-
-          echo "$BADGING" \
-            | grep -Fq "versionCode='51'"
-
-          echo "$BADGING" \
-            | grep -Fq "versionName='1.51.0-wifi'"
-
+          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
+          echo "$BADGING" | grep -Fq "versionCode='52'"
+          echo "$BADGING" | grep -Fq "versionName='1.52.0-wifi'"
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-
-          cp "$APK" \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V51-WIFI-SIGNED.apk"
-
-          sha256sum \
-            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V51-WIFI-SIGNED.apk" \
-            > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
-
-          {
-            echo "## APK V51 vérifié"
-            echo
-            echo "- Commit : \`$GITHUB_SHA\`"
-            echo "- ZIP source : \`$SOURCE_ZIP_USED\`"
-            echo "- Application ID : \`com.aistudio.youngestbiz.mbkz\`"
-            echo "- Version : \`1.51.0-wifi\` (code 51)"
-            echo "- Signature APK : vérifiée"
-            echo "- Fichier : \`YOUNGEST-BUSINESS-V51-WIFI-SIGNED.apk\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload signed V51 APK
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V52-WIFI-SIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V52-WIFI-SIGNED.apk" > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+          { echo "## V52 APK built and verified"; echo; echo "- Commit: \`$GITHUB_SHA\`"; echo "- Version: \`1.52.0-wifi\` (code 52)"; echo "- Signature: verified"; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload signed V52 APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V51-WIFI-SIGNED
+          name: YOUNGEST-BUSINESS-V52-WIFI-SIGNED
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
-
-      - name: Publish final execution status
+      - name: Publish final status
         if: always()
         shell: bash
         env:
           JOB_STATUS: ${{ job.status }}
         run: |
-          {
-            echo "## Résultat final de YOUNGEST'S BUSINESS V51"
-            echo
-            echo "- Statut : **$JOB_STATUS**"
-            echo "- Commit : \`$GITHUB_SHA\`"
-            echo "- Branche : \`$GITHUB_REF_NAME\`"
-            echo "- Exécution : [Ouvrir le journal]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
-            echo
-          } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## Final V52 workflow status"; echo; echo "- Status: **$JOB_STATUS**"; echo "- Commit: \`$GITHUB_SHA\`"; echo "- Run: [Open workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$JOB_STATUS" != "success" ]; then echo "::error::V52 workflow failed. Inspect the failed step."; fi
 
-          if [ "$JOB_STATUS" != "success" ]; then
-            echo "::error::Le workflow V51 n'a pas terminé avec succès. Consultez l'étape en échec."
-          fi
-
-# Ce workflow compile et vérifie l'APK Android.
-# Il ne déploie pas Firebase Hosting ni les règles Firestore.
+# Android APK build only. Firebase Hosting and Firestore rules are not deployed here.
