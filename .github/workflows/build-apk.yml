@@ -7,7 +7,7 @@ on:
     branches:
       - main
     paths:
-      - YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV-1.zip
+      - YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
       - .github/workflows/build-apk.yml
 
 permissions:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-INTEGRATION-WIFI-BASE-V42-V47-DEV-1.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V50-CORRECTED-SOURCE.zip
 
 jobs:
   build-android:
@@ -53,40 +53,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+
           test -s "$ZIP_PATH" || {
-            echo "::error::ZIP source V50 introuvable."
+            echo "::error::ZIP source V50 introuvable à la racine du dépôt."
             exit 1
           }
+
           unzip -t "$ZIP_PATH"
+
           DEST="$RUNNER_TEMP/v50-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
           PROJECT_DIR=""
+
           while IFS= read -r -d '' SETTINGS; do
             CANDIDATE="$(dirname "$SETTINGS")"
+
             if [ -s "$CANDIDATE/app/build.gradle" ] \
               && [ -s "$CANDIDATE/app/src/main/AndroidManifest.xml" ] \
               && [ -s "$CANDIDATE/app/google-services.json" ]; then
               PROJECT_DIR="$CANDIDATE"
               break
             fi
-          done < <(find "$DEST" -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
+          done < <(
+            find "$DEST" -type f \
+              \( -name settings.gradle -o -name settings.gradle.kts \) \
+              -print0
+          )
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Projet Android Gradle introuvable."
+            echo "::error::Projet Android Gradle introuvable dans le ZIP."
             exit 1
           fi
 
           test -s "$PROJECT_DIR/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set V50 version
         shell: bash
         run: |
           set -euo pipefail
+
           GRADLE_FILE="$PROJECT_DIR/app/build.gradle"
 
           python3 - "$GRADLE_FILE" <<'PY'
@@ -99,16 +110,22 @@ jobs:
 
           text, code_count = re.subn(
               r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
-              r"\g<1>50\g<2>", text, count=1
+              r"\g<1>50\g<2>",
+              text,
+              count=1
           )
+
           text, name_count = re.subn(
               r"""(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$""",
               r"\g<1>'1.50.0-wifi-candidate'\g<2>",
-              text, count=1
+              text,
+              count=1
           )
 
           if code_count != 1 or name_count != 1:
-              raise SystemExit("Impossible de définir sûrement la version V50.")
+              raise SystemExit(
+                  "Impossible de définir sûrement la version V50."
+              )
 
           if "com.aistudio.youngestbiz.mbkz" not in text:
               raise SystemExit("Application ID attendu introuvable.")
@@ -132,24 +149,31 @@ jobs:
             echo "::error::Secret KEYSTORE_BASE64 manquant."
             exit 1
           }
+
           test -n "$KEYSTORE_PASSWORD" || {
             echo "::error::Secret KEYSTORE_PASSWORD manquant."
             exit 1
           }
+
           test -n "$KEY_PASSWORD" || {
             echo "::error::Secret KEY_PASSWORD manquant."
             exit 1
           }
 
           KEYSTORE_FILE="$PROJECT_DIR/release-keystore.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode > "$KEYSTORE_FILE"
+
           test -s "$KEYSTORE_FILE"
           chmod 600 "$KEYSTORE_FILE"
 
-          KEY_ALIAS="$(keytool -list -v \
-            -keystore "$KEYSTORE_FILE" \
-            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null |
-            awk -F': ' '/^Alias name:/{print $2; exit}')"
+          KEY_ALIAS="$(
+            keytool -list -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+              | awk -F': ' '/^Alias name:/{print $2; exit}'
+          )"
 
           test -n "$KEY_ALIAS" || {
             echo "::error::Alias du keystore introuvable."
@@ -174,20 +198,32 @@ jobs:
           set -euo pipefail
 
           APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+
           test -s "$APK"
 
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
             verify --verbose --print-certs "$APK"
 
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          BADGING="$(
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK"
+          )"
 
-          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
-          echo "$BADGING" | grep -Fq "versionCode='50'"
-          echo "$BADGING" | grep -Fq "versionName='1.50.0-wifi-candidate'"
+          echo "$BADGING" \
+            | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
+
+          echo "$BADGING" \
+            | grep -Fq "versionCode='50'"
+
+          echo "$BADGING" \
+            | grep -Fq "versionName='1.50.0-wifi-candidate'"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk" \
+
+          cp "$APK" \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk"
+
+          sha256sum \
+            "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V50-SIGNED-CANDIDATE.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
       - name: Upload signed V50 candidate
