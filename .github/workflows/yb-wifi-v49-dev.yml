@@ -1,4 +1,4 @@
-name: YOUNGEST'S BUSINESS V54 Wi-Fi Complete
+name: YOUNGEST'S BUSINESS V55 Wi-Fi Multi-Routers PC Admin
 
 on:
   workflow_dispatch:
@@ -11,33 +11,33 @@ permissions:
   id-token: write
 
 concurrency:
-  group: yb-wifi-v54-${{ github.ref }}-${{ github.sha }}
+  group: yb-wifi-v55-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V54-WIFI-COMPLETE-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V55-WIFI-MULTI-ROUTEURS-PC-ADMIN-SOURCE.zip
   FIREBASE_PROJECT: youngestsbusiness
 
 jobs:
   build-android:
-    name: Build and verify V54 signed APK
+    name: Build and verify V55 signed APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract and verify V54 source
+      - name: Extract and verify V55 source
         shell: bash
         run: |
           set -euo pipefail
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
           if [ ! -s "$ZIP_PATH" ]; then
-            echo "::error::V54 source ZIP missing at repository root: $SOURCE_ZIP"
+            echo "::error::V55 source ZIP missing at repository root: $SOURCE_ZIP"
             exit 1
           fi
           unzip -t "$ZIP_PATH"
-          DEST="$RUNNER_TEMP/v54-source"
+          DEST="$RUNNER_TEMP/v55-source"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -53,7 +53,7 @@ jobs:
           done < <(find "$DEST" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print0)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Android Gradle project not found in V54 source ZIP."
+            echo "::error::Android Gradle project not found in V55 source ZIP."
             exit 1
           fi
 
@@ -61,6 +61,9 @@ jobs:
           test -s "$PROJECT_DIR/web-admin/index.html"
           test -s "$PROJECT_DIR/web-admin/app.js"
           test -s "$PROJECT_DIR/web-admin/assets/youngests-b-wifi-logo.png"
+          grep -q 'yb_wifi_routers' "$PROJECT_DIR/firestore.rules"
+          grep -q 'yb_wifi_routers' "$PROJECT_DIR/web-admin/app.js"
+          grep -qi 'multi-routeurs' "$PROJECT_DIR/README-V55-WIFI-MULTI-ROUTEURS-PC-ADMIN.md"
           node --check "$PROJECT_DIR/web-admin/app.js"
           grep -q 'yb_wifi_cash_reconciliations' "$PROJECT_DIR/firestore.rules"
           grep -q 'yb_wifi_audit_logs' "$PROJECT_DIR/firestore.rules"
@@ -71,7 +74,7 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           {
-            echo "## V54 source verified"
+            echo "## V55 source verified"
             echo
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Source ZIP: \`$SOURCE_ZIP\`"
@@ -100,7 +103,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Set V54 version and verify application ID
+      - name: Set V55 version and verify application ID
         shell: bash
         run: |
           set -euo pipefail
@@ -114,22 +117,22 @@ jobs:
           s = p.read_text(encoding="utf-8")
           s, code_count = re.subn(
               r"(?m)^([ \t]*versionCode[ \t]+)\d+([ \t]*)$",
-              r"\g<1>54\g<2>", s, count=1
+              r"\g<1>55\g<2>", s, count=1
           )
           s, name_count = re.subn(
               r'''(?m)^([ \t]*versionName[ \t]+)['"][^'"]+['"]([ \t]*)$''',
-              r"\g<1>'1.54.0-wifi'\g<2>", s, count=1
+              r"\g<1>'1.55.0-wifi-multi-router'\g<2>", s, count=1
           )
           if code_count != 1 or name_count != 1:
-              raise SystemExit("Cannot set V54 version markers safely.")
+              raise SystemExit("Cannot set V55 version markers safely.")
           if not re.search(
               r'''applicationId\s+['"]com\.aistudio\.youngestbiz\.mbkz['"]''', s
           ):
               raise SystemExit("Expected applicationId not found.")
           p.write_text(s, encoding="utf-8")
           PY
-          grep -Eq '^[[:space:]]*versionCode[[:space:]]+54([[:space:]]|$)' "$GRADLE_FILE"
-          grep -Fq "1.54.0-wifi" "$GRADLE_FILE"
+          grep -Eq '^[[:space:]]*versionCode[[:space:]]+55([[:space:]]|$)' "$GRADLE_FILE"
+          grep -Fq "1.55.0-wifi-multi-router" "$GRADLE_FILE"
 
       - name: Configure production signing
         shell: bash
@@ -157,13 +160,13 @@ jobs:
             echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
           } >> "$GITHUB_ENV"
 
-      - name: Build V54 release APK
+      - name: Build V55 release APK
         shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon -p "$PROJECT_DIR" clean :app:assembleRelease --stacktrace
 
-      - name: Verify V54 APK package, version and signature
+      - name: Verify V55 APK package, version and signature
         shell: bash
         run: |
           set -euo pipefail
@@ -175,27 +178,27 @@ jobs:
 
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
-          echo "$BADGING" | grep -Fq "versionCode='54'"
-          echo "$BADGING" | grep -Fq "versionName='1.54.0-wifi'"
+          echo "$BADGING" | grep -Fq "versionCode='55'"
+          echo "$BADGING" | grep -Fq "versionName='1.55.0-wifi-multi-router'"
 
           mkdir -p "$GITHUB_WORKSPACE/release-output"
-          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V54-WIFI-SIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V54-WIFI-SIGNED.apk" \
+          cp "$APK" "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V55-WIFI-SIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/release-output/YOUNGEST-BUSINESS-V55-WIFI-SIGNED.apk" \
             > "$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
 
           {
-            echo "## ✅ V54 APK compiled and signature verified"
+            echo "## ✅ V55 APK compiled and signature verified"
             echo
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Package: \`com.aistudio.youngestbiz.mbkz\`"
-            echo "- Version: \`1.54.0-wifi\` (code 54)"
+            echo "- Version: \`1.55.0-wifi-multi-router\` (code 55)"
             echo "- APK signature: verified"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload signed V54 APK
+      - name: Upload signed V55 APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V54-WIFI-SIGNED
+          name: YOUNGEST-BUSINESS-V55-WIFI-SIGNED
           path: release-output/*
           if-no-files-found: error
           retention-days: 30
@@ -207,7 +210,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "## V54 Android build result"
+            echo "## V55 Android build result"
             echo
             echo "- Status: **$JOB_STATUS**"
             echo "- Commit: \`$GITHUB_SHA\`"
@@ -223,13 +226,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract and validate Firebase project from V54 source
+      - name: Extract and validate Firebase project from V55 source
         shell: bash
         run: |
           set -euo pipefail
           ZIP_PATH="$GITHUB_WORKSPACE/$SOURCE_ZIP"
-          test -s "$ZIP_PATH" || { echo "::error::V54 source ZIP missing: $SOURCE_ZIP"; exit 1; }
-          DEST="$RUNNER_TEMP/v54-deploy"
+          test -s "$ZIP_PATH" || { echo "::error::V55 source ZIP missing: $SOURCE_ZIP"; exit 1; }
+          DEST="$RUNNER_TEMP/v55-deploy"
           mkdir -p "$DEST"
           unzip -q "$ZIP_PATH" -d "$DEST"
 
@@ -245,14 +248,14 @@ jobs:
           done < <(find "$DEST" -type f -name firebase.json -print0)
 
           if [ -z "$DEPLOY_DIR" ]; then
-            echo "::error::Could not locate firebase.json with .firebaserc, web-admin/index.html and firestore.rules in V54 ZIP."
+            echo "::error::Could not locate firebase.json with .firebaserc, web-admin/index.html and firestore.rules in V55 source ZIP."
             exit 1
           fi
 
           node --check "$DEPLOY_DIR/web-admin/app.js"
           echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
           {
-            echo "## V54 deployment source verified"
+            echo "## V55 deployment source verified"
             echo
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Firebase config: found"
@@ -275,7 +278,7 @@ jobs:
 
       - name: Deploy Hosting and Firestore rules
         shell: bash
-        working-directory: ${{ runner.temp }}/v54-deploy
+        working-directory: ${{ runner.temp }}/v55-deploy
         run: |
           set -euo pipefail
           # DEPLOY_DIR is discovered from the extracted ZIP; change into it explicitly.
@@ -289,7 +292,7 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "## V54 Web Admin and Firestore deployment"
+            echo "## V55 Web Admin and Firestore deployment"
             echo
             echo "- Status: **$JOB_STATUS**"
             echo "- Commit: \`$GITHUB_SHA\`"
