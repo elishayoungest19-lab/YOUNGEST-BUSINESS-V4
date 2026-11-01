@@ -1,25 +1,126 @@
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+name: YOUNGEST'S BUSINESS V57 - Journal des opérations
 
-      - name: Install required Android SDK packages
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: yb-journal-v57-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT: youngestsbusiness
+
+jobs:
+  build-android:
+    name: Build and verify V57 Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Verify V57 journal sources
         shell: bash
         run: |
           set -euo pipefail
+          test -s app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          test -s web-admin/app.js
+          test -s web-admin/index.html
+          node --check web-admin/app.js
+          grep -q 'yb_mobile_money_journal' firestore.rules
+          grep -q 'Frais d.envoi' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'DEPENSE' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
+          grep -q 'Frais d’envoi' web-admin/app.js
+          grep -q 'DEPENSE' web-admin/app.js
+          grep -Eq '^[[:space:]]*versionCode[[:space:]]+57([[:space:]]|$)' app/build.gradle
+          grep -Fq "1.57.0-journal-operations" app/build.gradle
 
-          echo "Android SDK location: $ANDROID_HOME"
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
+          chmod 600 release-keystore.jks
+          KEY_ALIAS="$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
+          test -n "$KEY_ALIAS"
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
 
-          sdkmanager --version
+      - name: Build signed APK
+        run: gradle --no-daemon clean :app:assembleRelease --stacktrace
 
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
+          echo "$BADGING" | grep -Fq "versionCode='57'"
+          echo "$BADGING" | grep -Fq "versionName='1.57.0-journal-operations'"
 
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V57-JOURNAL-OPERATIONS-ANDROID
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
-          test -d "$ANDROID_HOME/platform-tools"
-          test -d "$ANDROID_HOME/platforms/android-35"
-          test -d "$ANDROID_HOME/build-tools/35.0.0"
+  deploy-web:
+    name: Deploy V57 Web Admin and Firestore rules
+    needs: build-android
+    runs-on: ubuntu-latest
 
-          echo "Android SDK components installed successfully."
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate Web Admin
+        run: node --check web-admin/app.js
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Deploy Hosting and Firestore rules
+        run: firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT" --non-interactive
