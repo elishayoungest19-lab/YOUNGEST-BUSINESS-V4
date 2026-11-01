@@ -1,4 +1,4 @@
- name: YOUNGEST'S BUSINESS V57 - Journal des opérations
+name: YOUNGEST'S BUSINESS V57 - Journal des opérations
 
 on:
   workflow_dispatch:
@@ -205,5 +205,5 @@ jobs:
         run: npm install --global firebase-tools
 
       - name: Deploy V57 Hosting and Firestore rules
-        working-directory: ${{ runner.temp }}/yb-v57-deploy
+        working-directory: ${{ env.PROJECT_DIR }}
         run: firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT" --non-interactive
