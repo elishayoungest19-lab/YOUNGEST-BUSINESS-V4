@@ -1,24 +1,29 @@
-name: YOUNGEST'S BUSINESS V58 - Build APK Test
+
+name: YOUNGEST'S BUSINESS V58 - OFFICIAL RELEASE
 
 on:
   push:
     branches:
       - main
-      - v58-test
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: yb-v58-build-${{ github.ref }}
+  group: youngest-business-v58-production
   cancel-in-progress: false
 
+env:
+  FIREBASE_PROJECT: youngestsbusiness
+
 jobs:
-  build-v58:
-    name: Extract and Build V58 Android
+
+  build-android:
+    name: Build Official Signed Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - name: Checkout repository
@@ -28,32 +33,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="YOUNGEST-BUSINESS-V58-FINAL-CORRIGE-SOURCE.zip"
 
-          if [ ! -f "$ZIP" ]; then
-            echo "V58 source ZIP not found at repository root."
-            find . -maxdepth 2 -iname '*V58*SOURCE*.zip'
+          ZIP=$(find . -maxdepth 2 -type f \
+            -iname '*V58*FINAL*CORRIGE*SOURCE*.zip' \
+            -print -quit)
+
+          if [ -z "$ZIP" ]; then
+            echo "V58 source archive not found."
             exit 1
           fi
 
-          echo "V58 source archive found."
+          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "Found: $ZIP"
 
       - name: Extract V58 source
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p v58-source
-          unzip -q YOUNGEST-BUSINESS-V58-FINAL-CORRIGE-SOURCE.zip -d v58-source
+          unzip -q "$SOURCE_ZIP" -d v58-source
 
           test -s v58-source/app/build.gradle
           test -s v58-source/settings.gradle
           test -s v58-source/app/google-services.json
+          test -s v58-source/web-admin/index.html
           test -s v58-source/web-admin/app.js
-          test -s v58-source/functions/index.js
           test -s v58-source/firebase.json
           test -s v58-source/firestore.rules
+          test -s v58-source/functions/index.js
 
-          echo "V58 source extracted successfully."
+          echo "V58 source successfully extracted."
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -75,31 +85,74 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Validate JavaScript
+      - name: Validate V58 sources
+        shell: bash
         run: |
+          set -euo pipefail
+
           node --check v58-source/web-admin/app.js
           node --check v58-source/functions/index.js
 
-      - name: Verify V58 Android version
+          grep -Eq 'versionCode[[:space:]]+58' \
+            v58-source/app/build.gradle
+
+          grep -Fq "1.58.0-mobile-money-receipts" \
+            v58-source/app/build.gradle
+
+          echo "V58 source validation passed."
+
+      - name: Configure official Android signing
         shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          grep -Eq 'versionCode[[:space:]]+58' v58-source/app/build.gradle
-          grep -Fq "1.58.0-mobile-money-receipts" v58-source/app/build.gradle
-          echo "Android version 58 confirmed."
 
-      - name: Build V58 Debug APK
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > v58-source/release-keystore.jks
+
+          chmod 600 v58-source/release-keystore.jks
+
+          export LC_ALL=C
+
+          KEY_ALIAS=$(
+            keytool -list -v \
+              -keystore v58-source/release-keystore.jks \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+              | awk -F': ' '/^Alias name:/{print $2; exit}'
+          )
+
+          test -n "$KEY_ALIAS"
+
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build official release APK
         working-directory: v58-source
         run: |
-          gradle --no-daemon clean :app:assembleDebug --stacktrace
+          gradle --no-daemon clean :app:assembleRelease --stacktrace
 
-      - name: Verify generated APK
+      - name: Verify official APK
         shell: bash
         run: |
           set -euo pipefail
 
-          APK="v58-source/app/build/outputs/apk/debug/app-debug.apk"
+          APK="v58-source/app/build/outputs/apk/release/app-release.apk"
+
           test -s "$APK"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose --print-certs "$APK"
 
           "$ANDROID_HOME/build-tools/35.0.0/aapt" \
             dump badging "$APK" > apk-info.txt
@@ -108,17 +161,81 @@ jobs:
           grep -Fq "versionCode='58'" apk-info.txt
           grep -Fq "versionName='1.58.0-mobile-money-receipts'" apk-info.txt
 
-          echo "V58 APK verification successful."
+          echo "Official V58 APK verified."
 
-      - name: Upload V58 Android APK
+      - name: Upload official APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V58-ANDROID-TEST
-          path: v58-source/app/build/outputs/apk/debug/app-debug.apk
+          name: YOUNGEST-BUSINESS-V58-OFFICIAL-ANDROID
+          path: v58-source/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
-      - name: Confirm test completion
+  deploy-firebase:
+    name: Deploy V58 Web Admin and Firebase
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate V58 source archive
+        shell: bash
         run: |
-          echo "V58 Android test build completed."
-          echo "Firebase production deployment was not performed."
+          set -euo pipefail
+
+          ZIP=$(find . -maxdepth 2 -type f \
+            -iname '*V58*FINAL*CORRIGE*SOURCE*.zip' \
+            -print -quit)
+
+          test -n "$ZIP"
+          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V58 deployment source
+        run: |
+          mkdir -p v58-source
+          unzip -q "$SOURCE_ZIP" -d v58-source
+
+          test -s v58-source/firebase.json
+          test -s v58-source/.firebaserc
+          test -s v58-source/web-admin/index.html
+          test -s v58-source/web-admin/app.js
+          test -s v58-source/firestore.rules
+          test -s v58-source/functions/index.js
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Web Admin
+        run: |
+          node --check v58-source/web-admin/app.js
+          node --check v58-source/functions/index.js
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Authenticate Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Install Cloud Functions dependencies
+        run: |
+          npm --prefix v58-source/functions install --omit=dev
+
+      - name: Deploy Web Admin, Firestore and Functions
+        working-directory: v58-source
+        run: |
+          firebase deploy \
+            --only hosting,firestore:rules,functions \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive
+
+      - name: Confirm deployment
+        run: |
+          echo "YOUNGEST'S BUSINESS V58 deployment completed."
+          echo "Web Admin: https://youngestsbusiness.web.app"
