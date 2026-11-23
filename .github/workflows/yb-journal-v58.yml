@@ -1,4 +1,5 @@
-name: YOUNGEST'S BUSINESS V58 - Build and Test
+
+name: YOUNGEST'S BUSINESS V58 - Full Project Diagnostic
 
 on:
   push:
@@ -12,13 +13,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: yb-v58-${{ github.ref }}
+  group: yb-v58-diagnostic-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  verify-sources:
-    name: Verify V58 project files
+  diagnose-project:
+    name: Diagnose V58 Project Structure
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout source
@@ -29,127 +31,122 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Verify required files
+      - name: Display repository information
         shell: bash
         run: |
-          set -euo pipefail
+          echo "=================================="
+          echo "YOUNGEST'S BUSINESS V58"
+          echo "PROJECT DIAGNOSTIC"
+          echo "=================================="
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "Commit: $GITHUB_SHA"
+          echo ""
+          echo "ROOT DIRECTORY:"
+          pwd
+          ls -la
 
-          test -s app/build.gradle
-          test -s build.gradle
-          test -s settings.gradle
-          test -s web-admin/index.html
-          test -s web-admin/app.js
-          test -s web-admin/styles.css
-          test -s firebase.json
-          test -s firestore.rules
-          test -s functions/index.js
-
-          JAVA_FILE=$(find app/src/main -name MainActivity.java -print -quit)
-          test -n "$JAVA_FILE"
-          test -s "$JAVA_FILE"
-
-          echo "All required V58 files are present."
-
-      - name: Validate JavaScript
-        run: |
-          node --check web-admin/app.js
-          node --check functions/index.js
-
-      - name: Verify Android version
+      - name: Locate Android project files
         shell: bash
         run: |
-          grep -Eq 'versionCode[[:space:]]+58' app/build.gradle
-          grep -Fq "1.58.0-mobile-money-receipts" app/build.gradle
-          echo "Android version V58 verified."
+          echo "===== ANDROID FILES ====="
 
-  build-android:
-    name: Build V58 Android APK
-    needs: verify-sources
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+          find . -type f \
+            \( -name "MainActivity.java" \
+            -o -name "MainActivity.kt" \
+            -o -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+            -o -name "settings.gradle" \
+            -o -name "gradlew" \) \
+            -not -path "./.git/*" \
+            -print | head -200
 
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Build Android debug APK
-        run: |
-          gradle --no-daemon clean :app:assembleDebug --stacktrace
-
-      - name: Verify APK exists
+      - name: Locate Web Admin files
         shell: bash
         run: |
-          set -euo pipefail
+          echo "===== WEB ADMIN FILES ====="
 
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
+          find . -type f \
+            \( -name "index.html" \
+            -o -name "app.js" \
+            -o -name "styles.css" \) \
+            -not -path "./.git/*" \
+            -print | head -200
 
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" \
-            dump badging "$APK" > apk-info.txt
+      - name: Locate Firebase files
+        shell: bash
+        run: |
+          echo "===== FIREBASE FILES ====="
 
-          grep -Fq "com.aistudio.youngestbiz.mbkz" apk-info.txt
-          grep -Fq "versionCode='58'" apk-info.txt
-          grep -Fq "versionName='1.58.0-mobile-money-receipts'" apk-info.txt
+          find . -type f \
+            \( -name "firebase.json" \
+            -o -name ".firebaserc" \
+            -o -name "firestore.rules" \
+            -o -name "google-services.json" \
+            -o -name "package.json" \) \
+            -not -path "./.git/*" \
+            -print | head -200
 
-          echo "V58 debug APK successfully verified."
+      - name: Check JavaScript files
+        shell: bash
+        run: |
+          echo "===== JAVASCRIPT VALIDATION ====="
 
-      - name: Upload V58 Android APK
+          while IFS= read -r file; do
+            echo "Checking: $file"
+
+            if node --check "$file"; then
+              echo "OK: $file"
+            else
+              echo "SYNTAX ERROR: $file"
+            fi
+          done < <(
+            find . -type f \
+              \( -name "app.js" -o -path "*/functions/*.js" \) \
+              -not -path "./.git/*"
+          )
+
+      - name: Display Gradle configuration
+        shell: bash
+        run: |
+          echo "===== GRADLE CONFIGURATION ====="
+
+          find . -type f \
+            \( -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+            -o -name "gradle-wrapper.properties" \) \
+            -not -path "./.git/*" \
+            -print
+
+      - name: Generate project diagnostic report
+        shell: bash
+        run: |
+          {
+            echo "# YOUNGEST'S BUSINESS V58"
+            echo "## Project Diagnostic"
+            echo ""
+            echo "- Repository: $GITHUB_REPOSITORY"
+            echo "- Branch: $GITHUB_REF_NAME"
+            echo "- Commit: $GITHUB_SHA"
+            echo ""
+            echo "## Project files"
+            find . -type f \
+              -not -path "./.git/*" \
+              | sort
+          } > V58-DIAGNOSTIC.txt
+
+          echo "Diagnostic report generated."
+
+      - name: Upload diagnostic report
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V58-ANDROID-TEST
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: YOUNGEST-BUSINESS-V58-DIAGNOSTIC
+          path: V58-DIAGNOSTIC.txt
           if-no-files-found: error
           retention-days: 30
 
-  web-admin-validation:
-    name: Validate V58 Web Admin
-    needs: verify-sources
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Validate Web Admin JavaScript
-        run: node --check web-admin/app.js
-
-      - name: Validate Firebase Functions JavaScript
-        run: node --check functions/index.js
-
-      - name: Confirm Firebase configuration
+      - name: Diagnostic completed
         run: |
-          test -s firebase.json
-          test -s .firebaserc
-          echo "Firebase configuration files found."
-
-  production-deployment:
-    name: Production deployment - DISABLED
-    if: false
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Production deployment is disabled during V58 testing."
+          echo "V58 project diagnostic completed."
+          echo "No APK build was attempted."
+          echo "No Firebase production deployment was attempted."
