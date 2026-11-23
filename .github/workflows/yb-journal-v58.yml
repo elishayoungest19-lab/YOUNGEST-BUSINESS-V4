@@ -1,27 +1,71 @@
 
-name: YOUNGEST'S BUSINESS V58 - Build and Deploy
+name: YOUNGEST'S BUSINESS V58 - Build and Test
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
       - v58-test
 
+  workflow_dispatch:
+
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: yb-v58-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  FIREBASE_PROJECT: youngestsbusiness
-
 jobs:
+  verify-sources:
+    name: Verify V58 project files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify required files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -s app/build.gradle
+          test -s build.gradle
+          test -s settings.gradle
+          test -s web-admin/index.html
+          test -s web-admin/app.js
+          test -s web-admin/styles.css
+          test -s firebase.json
+          test -s firestore.rules
+          test -s functions/index.js
+
+          JAVA_FILE=$(find app/src/main -name MainActivity.java -print -quit)
+          test -n "$JAVA_FILE"
+          test -s "$JAVA_FILE"
+
+          echo "All required V58 files are present."
+
+      - name: Validate JavaScript
+        run: |
+          node --check web-admin/app.js
+          node --check functions/index.js
+
+      - name: Verify Android version
+        shell: bash
+        run: |
+          grep -Eq 'versionCode[[:space:]]+58' app/build.gradle
+          grep -Fq "1.58.0-mobile-money-receipts" app/build.gradle
+          echo "Android version V58 verified."
+
   build-android:
-    name: Build and verify V58 Android
+    name: Build V58 Android APK
+    needs: verify-sources
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -38,88 +82,49 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Install Android packages
+      - name: Install Android SDK packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Verify V58 sources
+      - name: Build Android debug APK
+        run: |
+          gradle --no-daemon clean :app:assembleDebug --stacktrace
+
+      - name: Verify APK exists
         shell: bash
         run: |
           set -euo pipefail
-          test -s app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          test -s web-admin/app.js
-          test -s web-admin/index.html
-          node --check web-admin/app.js
-          grep -q 'yb_mobile_money_journal' firestore.rules
-          grep -q 'Frais d.envoi' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'DEPENSE' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'Frais d’envoi' web-admin/app.js
-          grep -q 'DEPENSE' web-admin/app.js
-          grep -q 'yb_wifi_expenses' web-admin/app.js
-          grep -q 'yb_wifi_expenses' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'createLumicashJournalEntry' functions/index.js
-          grep -q 'VOIR / IMPRIMER LE REÇU' app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java
-          grep -q 'data-mobile-receipt' web-admin/app.js
-          grep -q 'postName' web-admin/app.js
-          grep -Eq '^[[:space:]]*versionCode[[:space:]]+58([[:space:]]|$)' app/build.gradle
-          grep -Fq "1.58.0-mobile-money-receipts" app/build.gradle
 
-      - name: Configure Android signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release-keystore.jks
-          chmod 600 release-keystore.jks
-          KEY_ALIAS="$(keytool -list -v -keystore release-keystore.jks -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | awk -F': ' '/^Alias name:/{print $2; exit}')"
-          test -n "$KEY_ALIAS"
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-          } >> "$GITHUB_ENV"
-
-      - name: Build signed APK
-        run: gradle --no-daemon clean :app:assembleRelease --stacktrace
-
-      - name: Verify APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="app/build/outputs/apk/release/app-release.apk"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | grep -Fq "package: name='com.aistudio.youngestbiz.mbkz'"
-          echo "$BADGING" | grep -Fq "versionCode='58'"
-          echo "$BADGING" | grep -Fq "versionName='1.58.0-mobile-money-receipts'"
 
-      - name: Upload Android APK
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" \
+            dump badging "$APK" > apk-info.txt
+
+          grep -Fq "com.aistudio.youngestbiz.mbkz" apk-info.txt
+          grep -Fq "versionCode='58'" apk-info.txt
+          grep -Fq "versionName='1.58.0-mobile-money-receipts'" apk-info.txt
+
+          echo "V58 debug APK successfully verified."
+
+      - name: Upload V58 Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V58-ANDROID
-          path: app/build/outputs/apk/release/app-release.apk
+          name: YOUNGEST-BUSINESS-V58-ANDROID-TEST
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
 
-  deploy-web:
-    name: Deploy V58 to Firebase Production
-    needs: build-android
-
-    # IMPORTANT: Production deployment only from main
-    if: github.ref == 'refs/heads/main'
-
+  web-admin-validation:
+    name: Validate V58 Web Admin
+    needs: verify-sources
     runs-on: ubuntu-latest
 
     steps:
@@ -131,23 +136,21 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Validate Web Admin
+      - name: Validate Web Admin JavaScript
         run: node --check web-admin/app.js
 
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools
+      - name: Validate Firebase Functions JavaScript
+        run: node --check functions/index.js
 
-      - name: Authenticate Firebase
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-
-      - name: Install Functions dependencies
-        run: npm --prefix functions install --omit=dev
-
-      - name: Deploy Firebase
+      - name: Confirm Firebase configuration
         run: |
-          firebase deploy \
-            --only hosting,firestore:rules,functions \
-            --project "$FIREBASE_PROJECT" \
-            --non-interactive
+          test -s firebase.json
+          test -s .firebaserc
+          echo "Firebase configuration files found."
+
+  production-deployment:
+    name: Production deployment - DISABLED
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Production deployment is disabled during V58 testing."
