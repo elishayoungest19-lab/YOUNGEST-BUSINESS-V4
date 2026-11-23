@@ -1,152 +1,124 @@
-
-name: YOUNGEST'S BUSINESS V58 - Full Project Diagnostic
+name: YOUNGEST'S BUSINESS V58 - Build APK Test
 
 on:
   push:
     branches:
       - main
       - v58-test
-
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: yb-v58-diagnostic-${{ github.ref }}
+  group: yb-v58-build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  diagnose-project:
-    name: Diagnose V58 Project Structure
+  build-v58:
+    name: Extract and Build V58 Android
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Locate V58 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="YOUNGEST-BUSINESS-V58-FINAL-CORRIGE-SOURCE.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "V58 source ZIP not found at repository root."
+            find . -maxdepth 2 -iname '*V58*SOURCE*.zip'
+            exit 1
+          fi
+
+          echo "V58 source archive found."
+
+      - name: Extract V58 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p v58-source
+          unzip -q YOUNGEST-BUSINESS-V58-FINAL-CORRIGE-SOURCE.zip -d v58-source
+
+          test -s v58-source/app/build.gradle
+          test -s v58-source/settings.gradle
+          test -s v58-source/app/google-services.json
+          test -s v58-source/web-admin/app.js
+          test -s v58-source/functions/index.js
+          test -s v58-source/firebase.json
+          test -s v58-source/firestore.rules
+
+          echo "V58 source extracted successfully."
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
-          node-version: '22'
+          distribution: temurin
+          java-version: '17'
 
-      - name: Display repository information
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Validate JavaScript
+        run: |
+          node --check v58-source/web-admin/app.js
+          node --check v58-source/functions/index.js
+
+      - name: Verify V58 Android version
         shell: bash
         run: |
-          echo "=================================="
-          echo "YOUNGEST'S BUSINESS V58"
-          echo "PROJECT DIAGNOSTIC"
-          echo "=================================="
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Branch: $GITHUB_REF_NAME"
-          echo "Commit: $GITHUB_SHA"
-          echo ""
-          echo "ROOT DIRECTORY:"
-          pwd
-          ls -la
+          set -euo pipefail
+          grep -Eq 'versionCode[[:space:]]+58' v58-source/app/build.gradle
+          grep -Fq "1.58.0-mobile-money-receipts" v58-source/app/build.gradle
+          echo "Android version 58 confirmed."
 
-      - name: Locate Android project files
+      - name: Build V58 Debug APK
+        working-directory: v58-source
+        run: |
+          gradle --no-daemon clean :app:assembleDebug --stacktrace
+
+      - name: Verify generated APK
         shell: bash
         run: |
-          echo "===== ANDROID FILES ====="
+          set -euo pipefail
 
-          find . -type f \
-            \( -name "MainActivity.java" \
-            -o -name "MainActivity.kt" \
-            -o -name "build.gradle" \
-            -o -name "build.gradle.kts" \
-            -o -name "settings.gradle" \
-            -o -name "gradlew" \) \
-            -not -path "./.git/*" \
-            -print | head -200
+          APK="v58-source/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
 
-      - name: Locate Web Admin files
-        shell: bash
-        run: |
-          echo "===== WEB ADMIN FILES ====="
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" \
+            dump badging "$APK" > apk-info.txt
 
-          find . -type f \
-            \( -name "index.html" \
-            -o -name "app.js" \
-            -o -name "styles.css" \) \
-            -not -path "./.git/*" \
-            -print | head -200
+          grep -Fq "com.aistudio.youngestbiz.mbkz" apk-info.txt
+          grep -Fq "versionCode='58'" apk-info.txt
+          grep -Fq "versionName='1.58.0-mobile-money-receipts'" apk-info.txt
 
-      - name: Locate Firebase files
-        shell: bash
-        run: |
-          echo "===== FIREBASE FILES ====="
+          echo "V58 APK verification successful."
 
-          find . -type f \
-            \( -name "firebase.json" \
-            -o -name ".firebaserc" \
-            -o -name "firestore.rules" \
-            -o -name "google-services.json" \
-            -o -name "package.json" \) \
-            -not -path "./.git/*" \
-            -print | head -200
-
-      - name: Check JavaScript files
-        shell: bash
-        run: |
-          echo "===== JAVASCRIPT VALIDATION ====="
-
-          while IFS= read -r file; do
-            echo "Checking: $file"
-
-            if node --check "$file"; then
-              echo "OK: $file"
-            else
-              echo "SYNTAX ERROR: $file"
-            fi
-          done < <(
-            find . -type f \
-              \( -name "app.js" -o -path "*/functions/*.js" \) \
-              -not -path "./.git/*"
-          )
-
-      - name: Display Gradle configuration
-        shell: bash
-        run: |
-          echo "===== GRADLE CONFIGURATION ====="
-
-          find . -type f \
-            \( -name "build.gradle" \
-            -o -name "build.gradle.kts" \
-            -o -name "gradle-wrapper.properties" \) \
-            -not -path "./.git/*" \
-            -print
-
-      - name: Generate project diagnostic report
-        shell: bash
-        run: |
-          {
-            echo "# YOUNGEST'S BUSINESS V58"
-            echo "## Project Diagnostic"
-            echo ""
-            echo "- Repository: $GITHUB_REPOSITORY"
-            echo "- Branch: $GITHUB_REF_NAME"
-            echo "- Commit: $GITHUB_SHA"
-            echo ""
-            echo "## Project files"
-            find . -type f \
-              -not -path "./.git/*" \
-              | sort
-          } > V58-DIAGNOSTIC.txt
-
-          echo "Diagnostic report generated."
-
-      - name: Upload diagnostic report
+      - name: Upload V58 Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V58-DIAGNOSTIC
-          path: V58-DIAGNOSTIC.txt
+          name: YOUNGEST-BUSINESS-V58-ANDROID-TEST
+          path: v58-source/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Diagnostic completed
+      - name: Confirm test completion
         run: |
-          echo "V58 project diagnostic completed."
-          echo "No APK build was attempted."
-          echo "No Firebase production deployment was attempted."
+          echo "V58 Android test build completed."
+          echo "Firebase production deployment was not performed."
