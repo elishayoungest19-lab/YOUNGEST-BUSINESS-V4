@@ -1,0 +1,270 @@
+name: YOUNGEST'S BUSINESS V59 - BRANDED RECEIPTS
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip'
+      - '.github/workflows/yb-journal-v59.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: youngest-business-v59-release
+  cancel-in-progress: false
+
+env:
+  FIREBASE_PROJECT: youngestsbusiness
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip
+
+jobs:
+
+  build-android:
+    name: Build Official Signed V59 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate and extract V59 source
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+
+          if [ ! -s "$ZIP" ]; then
+            echo "::error::V59 source ZIP not found: $SOURCE_ZIP"
+            find . -maxdepth 3 -type f -iname '*.zip' -print
+            exit 1
+          fi
+
+          unzip -t "$ZIP"
+
+          DEST="$RUNNER_TEMP/yb-v59-source"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP" -d "$DEST"
+
+          ROOT=""
+
+          while IFS= read -r -d '' INDEX; do
+            CANDIDATE="$(dirname "$(dirname "$INDEX")")"
+
+            if [ -s "$CANDIDATE/app/build.gradle" ] && \
+               [ -s "$CANDIDATE/settings.gradle" ] && \
+               [ -s "$CANDIDATE/web-admin/app.js" ] && \
+               [ -s "$CANDIDATE/firebase.json" ]; then
+              ROOT="$CANDIDATE"
+              break
+            fi
+          done < <(find "$DEST" -type f \
+            -path '*/web-admin/index.html' -print0)
+
+          if [ -z "$ROOT" ]; then
+            echo "::error::V59 project root not found"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
+
+          echo "V59 source successfully extracted."
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Validate V59 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node --check "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Eq 'versionCode[[:space:]]+59' \
+            "$PROJECT_DIR/app/build.gradle"
+
+          grep -Fq "1.59.0-branded-receipts" \
+            "$PROJECT_DIR/app/build.gradle"
+
+          test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
+
+          test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
+
+          echo "V59 validation passed."
+
+      - name: Configure official Android signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_PASSWORD"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > "$PROJECT_DIR/release-keystore.jks"
+
+          chmod 600 "$PROJECT_DIR/release-keystore.jks"
+
+          KEY_ALIAS=$(
+            keytool -list -v \
+              -keystore "$PROJECT_DIR/release-keystore.jks" \
+              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+              | awk -F': ' '/^Alias name:/{print $2; exit}'
+          )
+
+          test -n "$KEY_ALIAS"
+
+          {
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build official release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon clean :app:assembleRelease --stacktrace
+
+      - name: Verify signed installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk"
+
+          test -s "$APK"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            verify --verbose --print-certs "$APK"
+
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" \
+            dump badging "$APK" > "$RUNNER_TEMP/apk-info.txt"
+
+          grep -Fq "com.aistudio.youngestbiz.mbkz" \
+            "$RUNNER_TEMP/apk-info.txt"
+
+          grep -Fq "versionCode='59'" \
+            "$RUNNER_TEMP/apk-info.txt"
+
+          grep -Fq "versionName='1.59.0-branded-receipts'" \
+            "$RUNNER_TEMP/apk-info.txt"
+
+          echo "V59 official APK verified."
+
+      - name: Upload V59 official APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: YOUNGEST-BUSINESS-V59-OFFICIAL-INSTALLABLE-APK
+          path: ${{ steps.locate.outputs.project_dir }}/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+  deploy-web:
+    name: Deploy V59 Web Admin and Firestore Rules - Spark
+    needs: build-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate and extract V59 source
+        id: websource
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+
+          test -s "$ZIP" || {
+            echo "::error::V59 source ZIP missing"
+            exit 1
+          }
+
+          DEST="$RUNNER_TEMP/yb-v59-web"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP" -d "$DEST"
+
+          CONFIG=$(find "$DEST" -type f \
+            -name firebase.json -print -quit)
+
+          test -n "$CONFIG"
+
+          ROOT="$(dirname "$CONFIG")"
+
+          test -s "$ROOT/.firebaserc"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/firestore.rules"
+
+          echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
+
+          echo "V59 Web source found."
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Web Admin
+        run: |
+          set -euo pipefail
+          node --check "$PROJECT_DIR/web-admin/app.js"
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Authenticate Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Deploy Hosting and Firestore rules only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          firebase deploy \
+            --only hosting,firestore:rules \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive
+
+      - name: Deployment summary
+        run: |
+          echo "V59 Web Admin deployment completed."
+          echo "https://youngestsbusiness.web.app"
