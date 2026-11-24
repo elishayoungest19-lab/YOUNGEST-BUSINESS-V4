@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip'
+      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip'
       - '.github/workflows/yb-journal-v59.yml'
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ concurrency:
 
 env:
   FIREBASE_PROJECT: youngestsbusiness
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip
 
 jobs:
 
@@ -40,11 +40,12 @@ jobs:
           ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
           if [ ! -s "$ZIP" ]; then
-            echo "::error::V59 source ZIP not found: $SOURCE_ZIP"
-            find . -maxdepth 3 -type f -iname '*.zip' -print
+            echo "::error::V59 source ZIP missing: $SOURCE_ZIP"
+            find . -maxdepth 3 -type f -iname '*V59*.zip' -print
             exit 1
           fi
 
+          echo "Checking V59 archive..."
           unzip -t "$ZIP"
 
           DEST="$RUNNER_TEMP/yb-v59-source"
@@ -113,7 +114,7 @@ jobs:
 
           test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
 
-          echo "V59 validation passed."
+          echo "V59 source validation passed."
 
       - name: Configure official Android signing
         shell: bash
@@ -153,7 +154,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           cd "$PROJECT_DIR"
+
           gradle --no-daemon clean :app:assembleRelease --stacktrace
 
       - name: Verify signed installable APK
@@ -208,10 +211,10 @@ jobs:
 
           ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
-          test -s "$ZIP" || {
+          if [ ! -s "$ZIP" ]; then
             echo "::error::V59 source ZIP missing"
             exit 1
-          }
+          fi
 
           DEST="$RUNNER_TEMP/yb-v59-web"
           mkdir -p "$DEST"
@@ -220,7 +223,10 @@ jobs:
           CONFIG=$(find "$DEST" -type f \
             -name firebase.json -print -quit)
 
-          test -n "$CONFIG"
+          if [ -z "$CONFIG" ]; then
+            echo "::error::firebase.json missing"
+            exit 1
+          fi
 
           ROOT="$(dirname "$CONFIG")"
 
@@ -230,9 +236,8 @@ jobs:
           test -s "$ROOT/firestore.rules"
 
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
-          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
 
-          echo "V59 Web source found."
+          echo "V59 Web source successfully extracted."
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -240,6 +245,7 @@ jobs:
           node-version: '20'
 
       - name: Validate Web Admin
+        shell: bash
         run: |
           set -euo pipefail
           node --check "$PROJECT_DIR/web-admin/app.js"
