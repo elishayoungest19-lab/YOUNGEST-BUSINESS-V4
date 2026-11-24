@@ -7,6 +7,7 @@ on:
     paths:
       - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip'
       - '.github/workflows/yb-journal-v59.yml'
+
   workflow_dispatch:
 
 permissions:
@@ -22,12 +23,17 @@ env:
 
 jobs:
 
+  # ==========================================
+  # JOB 1 : BUILD OFFICIAL ANDROID APK
+  # ==========================================
+
   build-android:
     name: Build Official Signed V59 APK
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -64,8 +70,10 @@ jobs:
               ROOT="$CANDIDATE"
               break
             fi
-          done < <(find "$DEST" -type f \
-            -path '*/web-admin/index.html' -print0)
+          done < <(
+            find "$DEST" -type f \
+              -path '*/web-admin/index.html' -print0
+          )
 
           if [ -z "$ROOT" ]; then
             echo "::error::V59 project root not found"
@@ -113,6 +121,9 @@ jobs:
           test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
 
           test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
+
+          test -s "$PROJECT_DIR/web-admin/index.html"
+          test -s "$PROJECT_DIR/firestore.rules"
 
           echo "V59 source validation passed."
 
@@ -183,7 +194,7 @@ jobs:
           grep -Fq "versionName='1.59.0-branded-receipts'" \
             "$RUNNER_TEMP/apk-info.txt"
 
-          echo "V59 official APK verified."
+          echo "Official V59 APK verified."
 
       - name: Upload V59 official APK
         uses: actions/upload-artifact@v4
@@ -193,6 +204,10 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # ==========================================
+  # JOB 2 : DEPLOY WEB ADMIN AND FIRESTORE
+  # ==========================================
+
   deploy-web:
     name: Deploy V59 Web Admin and Firestore Rules - Spark
     needs: build-android
@@ -200,6 +215,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -218,24 +234,32 @@ jobs:
 
           DEST="$RUNNER_TEMP/yb-v59-web"
           mkdir -p "$DEST"
+
           unzip -q "$ZIP" -d "$DEST"
 
-          CONFIG=$(find "$DEST" -type f \
-            -name firebase.json -print -quit)
+          ROOT=""
 
-          if [ -z "$CONFIG" ]; then
-            echo "::error::firebase.json missing"
+          while IFS= read -r -d '' CONFIG; do
+            CANDIDATE="$(dirname "$CONFIG")"
+
+            if [ -s "$CANDIDATE/.firebaserc" ] && \
+               [ -s "$CANDIDATE/web-admin/index.html" ] && \
+               [ -s "$CANDIDATE/web-admin/app.js" ] && \
+               [ -s "$CANDIDATE/firestore.rules" ]; then
+              ROOT="$CANDIDATE"
+              break
+            fi
+          done < <(
+            find "$DEST" -type f -name firebase.json -print0
+          )
+
+          if [ -z "$ROOT" ]; then
+            echo "::error::V59 Firebase project root not found"
             exit 1
           fi
 
-          ROOT="$(dirname "$CONFIG")"
-
-          test -s "$ROOT/.firebaserc"
-          test -s "$ROOT/web-admin/index.html"
-          test -s "$ROOT/web-admin/app.js"
-          test -s "$ROOT/firestore.rules"
-
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
 
           echo "V59 Web source successfully extracted."
 
@@ -248,7 +272,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           node --check "$PROJECT_DIR/web-admin/app.js"
+
+          test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
+          test -s "$PROJECT_DIR/web-admin/index.html"
+          test -s "$PROJECT_DIR/firestore.rules"
+
+          echo "Web Admin validation passed."
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
@@ -272,5 +303,12 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "V59 Web Admin deployment completed."
+          echo "======================================"
+          echo "YOUNGEST'S BUSINESS V59 DEPLOYED"
+          echo "======================================"
+          echo "Web Admin:"
           echo "https://youngestsbusiness.web.app"
+          echo "Android APK:"
+          echo "YOUNGEST-BUSINESS-V59-OFFICIAL-INSTALLABLE-APK"
+          echo "Firebase Hosting and Firestore Rules deployed."
+          echo "Cloud Functions were not deployed."
