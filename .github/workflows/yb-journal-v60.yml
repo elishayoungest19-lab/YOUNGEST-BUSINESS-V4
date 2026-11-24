@@ -1,0 +1,87 @@
+name: YOUNGEST'S BUSINESS V60 - Web Admin Expenses Separation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web-admin/**'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/yb-journal-v60.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-web-admin:
+    name: Verify and Deploy V60 Web Admin
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Récupération du code source
+      - name: Checkout V60 source
+        uses: actions/checkout@v4
+
+      # 2. Installation de Node.js
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 3. Vérification des fichiers nécessaires
+      - name: Verify V60 files
+        run: |
+          test -f firebase.json
+          test -f .firebaserc
+          test -f web-admin/index.html
+          test -f web-admin/app-v60.js
+          test -f web-admin/styles-v59-4.css
+
+      # 4. Vérification du JavaScript V60
+      - name: Check V60 JavaScript syntax
+        run: |
+          node --check web-admin/app-v60.js
+
+      # 5. Vérification que la page charge bien le JavaScript V60
+      - name: Verify active V60 script
+        run: |
+          grep -q 'app-v60.js?v=60.0-expenses-separated' web-admin/index.html
+          echo "V60 active script verified"
+
+      # 6. Vérification du formulaire indépendant des dépenses
+      - name: Verify separate expenses module
+        run: |
+          grep -q 'expenseForm' web-admin/app-v60.js
+          grep -q "type:'DEPENSE'" web-admin/app-v60.js
+          echo "Separate expenses form verified"
+
+      # 7. Vérification de la section des dépenses dans les rapports
+      - name: Verify report expenses section
+        run: |
+          grep -q 'DÉPENSES (en bas du rapport)' web-admin/app-v60.js
+          echo "Expenses report section verified"
+
+      # 8. Vérification du projet Firebase
+      - name: Verify Firebase project
+        run: |
+          grep -q 'youngestsbusiness' .firebaserc
+          echo "Firebase project verified"
+
+      # 9. Installation de Firebase CLI
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      # 10. Déploiement du Web Admin uniquement
+      # Aucun APK Android n'est généré.
+      # Aucune Cloud Function n'est déployée.
+      # Aucune règle Firestore n'est modifiée.
+      - name: Deploy Firebase Hosting only
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase deploy \
+            --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
