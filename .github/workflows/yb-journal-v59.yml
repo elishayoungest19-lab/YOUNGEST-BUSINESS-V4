@@ -1,11 +1,11 @@
-name: YOUNGEST'S BUSINESS V59 - BRANDED RECEIPTS
+name: YOUNGEST'S BUSINESS V59 - CURRENCY RECEIPTS AND REPORTS
 
 on:
   push:
     branches:
       - main
     paths:
-      - '**/YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip'
+      - 'YOUNGEST-BUSINESS-V59-RECU-DEVise-ET-RAPPORTS-FIX.zip'
       - '.github/workflows/yb-journal-v59.yml'
   workflow_dispatch:
 
@@ -18,10 +18,9 @@ concurrency:
 
 env:
   FIREBASE_PROJECT: youngestsbusiness
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-RECU-DEVise-ET-RAPPORTS-FIX.zip
 
 jobs:
-
   build-android:
     name: Build Official Signed V59 APK
     runs-on: ubuntu-latest
@@ -31,26 +30,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate and extract V59 project
-        id: locate
+      - name: Locate and extract V59 source
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Searching for V59 source archive..."
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
-          ZIP="$(find "$GITHUB_WORKSPACE" \
-            -type f \
-            -name "$SOURCE_ZIP" \
-            -print -quit)"
-
-          if [ -z "$ZIP" ] || [ ! -s "$ZIP" ]; then
-            echo "::error::V59 source ZIP not found: $SOURCE_ZIP"
-            find "$GITHUB_WORKSPACE" -type f -iname '*V59*.zip' -print
+          if [ ! -s "$ZIP" ]; then
+            echo "::error::Source ZIP missing: $SOURCE_ZIP"
+            find "$GITHUB_WORKSPACE" -maxdepth 2 -type f -iname '*V59*.zip' -print || true
             exit 1
           fi
-
-          echo "Archive found: $ZIP"
 
           unzip -t "$ZIP"
 
@@ -59,39 +50,24 @@ jobs:
           unzip -q "$ZIP" -d "$DEST"
 
           ROOT=""
-
-          while IFS= read -r -d '' GRADLE_FILE; do
-            CANDIDATE="$(dirname "$(dirname "$GRADLE_FILE")")"
+          while IFS= read -r -d '' INDEX; do
+            CANDIDATE="$(dirname "$(dirname "$INDEX")")"
 
             if [ -s "$CANDIDATE/app/build.gradle" ] && \
                [ -s "$CANDIDATE/settings.gradle" ] && \
                [ -s "$CANDIDATE/web-admin/app.js" ] && \
-               [ -s "$CANDIDATE/firebase.json" ] && \
-               [ -s "$CANDIDATE/firestore.rules" ]; then
-
-              if grep -Eq 'versionCode[[:space:]]+59' \
-                "$CANDIDATE/app/build.gradle" && \
-                 grep -Fq "1.59.0-branded-receipts" \
-                "$CANDIDATE/app/build.gradle"; then
-                ROOT="$CANDIDATE"
-                break
-              fi
+               [ -s "$CANDIDATE/firebase.json" ]; then
+              ROOT="$CANDIDATE"
+              break
             fi
-          done < <(
-            find "$DEST" -type f \
-              -path '*/app/build.gradle' -print0
-          )
+          done < <(find "$DEST" -type f -path '*/web-admin/index.html' -print0)
 
-          if [ -z "$ROOT" ]; then
-            echo "::error::No valid V59 project root found."
-            find "$DEST" -maxdepth 4 -type f -print
+          test -n "$ROOT" || {
+            echo "::error::V59 project root not found"
             exit 1
-          fi
-
-          echo "V59 project root: $ROOT"
+          }
 
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
-          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -103,40 +79,28 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Validate V59 source files
+      - name: Validate V59 sources
         shell: bash
         run: |
           set -euo pipefail
 
           node --check "$PROJECT_DIR/web-admin/app.js"
 
-          grep -Eq 'versionCode[[:space:]]+59' \
-            "$PROJECT_DIR/app/build.gradle"
-
-          grep -Fq "1.59.0-branded-receipts" \
-            "$PROJECT_DIR/app/build.gradle"
-
-          test -s "$PROJECT_DIR/web-admin/index.html"
-          test -s "$PROJECT_DIR/web-admin/styles.css"
-          test -s "$PROJECT_DIR/web-admin/app.js"
+          grep -Eq 'versionCode[[:space:]]+59' "$PROJECT_DIR/app/build.gradle"
+          grep -Fq "1.59.0-branded-receipts" "$PROJECT_DIR/app/build.gradle"
 
           test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
           test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
 
-          test -s "$PROJECT_DIR/firestore.rules"
-          test -s "$PROJECT_DIR/firebase.json"
-
-          echo "V59 source validation passed."
+          grep -Fq "Devise de l’opération" "$PROJECT_DIR/web-admin/app.js"
+          grep -Fq "59.3-currency-receipt" "$PROJECT_DIR/web-admin/index.html"
 
       - name: Configure official Android signing
         shell: bash
@@ -151,18 +115,13 @@ jobs:
           test -n "$KEYSTORE_PASSWORD"
           test -n "$KEY_PASSWORD"
 
-          printf '%s' "$KEYSTORE_BASE64" \
-            | base64 --decode \
-            > "$PROJECT_DIR/release-keystore.jks"
-
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_DIR/release-keystore.jks"
           chmod 600 "$PROJECT_DIR/release-keystore.jks"
 
-          KEY_ALIAS=$(
-            keytool -list -v \
-              -keystore "$PROJECT_DIR/release-keystore.jks" \
-              -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | awk -F': ' '/^Alias name:/{print $2; exit}'
-          )
+          KEY_ALIAS=$(keytool -list -v \
+            -keystore "$PROJECT_DIR/release-keystore.jks" \
+            -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
+            | awk -F': ' '/^Alias name:/{print $2; exit}')
 
           test -n "$KEY_ALIAS"
 
@@ -176,9 +135,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           cd "$PROJECT_DIR"
-
           gradle --no-daemon clean :app:assembleRelease --stacktrace
 
       - name: Verify signed installable APK
@@ -196,22 +153,15 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" \
             dump badging "$APK" > "$RUNNER_TEMP/apk-info.txt"
 
-          grep -Fq "com.aistudio.youngestbiz.mbkz" \
-            "$RUNNER_TEMP/apk-info.txt"
-
-          grep -Fq "versionCode='59'" \
-            "$RUNNER_TEMP/apk-info.txt"
-
-          grep -Fq "versionName='1.59.0-branded-receipts'" \
-            "$RUNNER_TEMP/apk-info.txt"
-
-          echo "Official V59 APK verified."
+          grep -Fq "com.aistudio.youngestbiz.mbkz" "$RUNNER_TEMP/apk-info.txt"
+          grep -Fq "versionCode='59'" "$RUNNER_TEMP/apk-info.txt"
+          grep -Fq "versionName='1.59.0-branded-receipts'" "$RUNNER_TEMP/apk-info.txt"
 
       - name: Upload V59 official APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V59-OFFICIAL-INSTALLABLE-APK
-          path: ${{ steps.locate.outputs.project_dir }}/app/build/outputs/apk/release/app-release.apk
+          name: YOUNGEST-BUSINESS-V59-CURRENCY-FIX-OFFICIAL-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
 
@@ -230,58 +180,47 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP="$(find "$GITHUB_WORKSPACE" \
-            -type f \
-            -name "$SOURCE_ZIP" \
-            -print -quit)"
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
-          if [ -z "$ZIP" ] || [ ! -s "$ZIP" ]; then
-            echo "::error::V59 source ZIP not found."
+          test -s "$ZIP" || {
+            echo "::error::Source ZIP missing: $SOURCE_ZIP"
             exit 1
-          fi
+          }
 
           DEST="$RUNNER_TEMP/yb-v59-web"
           mkdir -p "$DEST"
           unzip -q "$ZIP" -d "$DEST"
 
-          ROOT=""
+          CONFIG=$(find "$DEST" -type f -name firebase.json -print -quit)
 
-          while IFS= read -r -d '' CONFIG; do
-            CANDIDATE="$(dirname "$CONFIG")"
-
-            if [ -s "$CANDIDATE/.firebaserc" ] && \
-               [ -s "$CANDIDATE/web-admin/index.html" ] && \
-               [ -s "$CANDIDATE/web-admin/app.js" ] && \
-               [ -s "$CANDIDATE/firestore.rules" ]; then
-
-              if grep -Eq 'versionCode[[:space:]]+59' \
-                "$CANDIDATE/app/build.gradle"; then
-                ROOT="$CANDIDATE"
-                break
-              fi
-            fi
-          done < <(
-            find "$DEST" -type f -name firebase.json -print0
-          )
-
-          if [ -z "$ROOT" ]; then
-            echo "::error::V59 Firebase project root not found."
+          test -n "$CONFIG" || {
+            echo "::error::firebase.json missing"
             exit 1
-          fi
+          }
 
-          echo "Web project root: $ROOT"
+          ROOT="$(dirname "$CONFIG")"
+
+          test -s "$ROOT/.firebaserc"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/firestore.rules"
+
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
-      - name: Validate Web Admin
+      - name: Validate Web Admin JavaScript
         shell: bash
         run: |
           set -euo pipefail
+
           node --check "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq "Devise de l’opération" "$PROJECT_DIR/web-admin/app.js"
+          grep -Fq "59.3-currency-receipt" "$PROJECT_DIR/web-admin/index.html"
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
@@ -291,11 +230,10 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Deploy Hosting and Firestore rules only
+      - name: Deploy Hosting and Firestore rules only (no Cloud Functions)
         shell: bash
         run: |
           set -euo pipefail
-
           cd "$PROJECT_DIR"
 
           firebase deploy \
@@ -304,6 +242,4 @@ jobs:
             --non-interactive
 
       - name: Deployment summary
-        run: |
-          echo "V59 Web Admin deployment completed."
-          echo "https://youngestsbusiness.web.app"
+        run: echo "V59 currency receipts and reports deployed to https://youngestsbusiness.web.app"
