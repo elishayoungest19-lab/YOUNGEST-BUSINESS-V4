@@ -1,11 +1,9 @@
-
-name: YOUNGEST'S BUSINESS V58 - OFFICIAL RELEASE
+name: YOUNGEST'S BUSINESS V58 - OFFICIAL RELEASE SPARK
 
 on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 permissions:
@@ -29,41 +27,61 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate V58 source archive
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ZIP=$(find . -maxdepth 2 -type f \
-            -iname '*V58*FINAL*CORRIGE*SOURCE*.zip' \
-            -print -quit)
-
-          if [ -z "$ZIP" ]; then
-            echo "V58 source archive not found."
-            exit 1
-          fi
-
-          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "Found: $ZIP"
-
-      - name: Extract V58 source
+      - name: Locate and extract V58 source archive
         shell: bash
         run: |
           set -euo pipefail
 
           mkdir -p v58-source
-          unzip -q "$SOURCE_ZIP" -d v58-source
+          FOUND=""
 
-          test -s v58-source/app/build.gradle
-          test -s v58-source/settings.gradle
-          test -s v58-source/app/google-services.json
-          test -s v58-source/web-admin/index.html
-          test -s v58-source/web-admin/app.js
-          test -s v58-source/firebase.json
-          test -s v58-source/firestore.rules
-          test -s v58-source/functions/index.js
+          while IFS= read -r -d '' ZIP; do
+            echo "Checking archive: $ZIP"
 
-          echo "V58 source successfully extracted."
+            if unzip -Z1 "$ZIP" | grep -Eq '(^|/)app/build.gradle$' &&
+               unzip -Z1 "$ZIP" | grep -Eq '(^|/)web-admin/index.html$' &&
+               unzip -Z1 "$ZIP" | grep -Eq '(^|/)firebase.json$'; then
+              FOUND="$ZIP"
+              break
+            fi
+          done < <(find . -type f -iname '*V58*.zip' -print0)
+
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: No valid V58 source ZIP found."
+            echo "ZIP files available:"
+            find . -type f -iname '*.zip' -print
+            exit 1
+          fi
+
+          echo "Selected archive: $FOUND"
+          unzip -q "$FOUND" -d v58-source
+
+          GRADLE_FILE=$(find v58-source -type f \
+            -path '*/app/build.gradle' -print -quit)
+
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "ERROR: app/build.gradle missing."
+            exit 1
+          fi
+
+          PROJECT_ROOT=$(dirname "$(dirname "$GRADLE_FILE")")
+
+          for FILE in \
+            settings.gradle \
+            app/google-services.json \
+            web-admin/index.html \
+            web-admin/app.js \
+            firebase.json \
+            .firebaserc \
+            firestore.rules; do
+            test -s "$PROJECT_ROOT/$FILE" || {
+              echo "ERROR: Missing $FILE"
+              exit 1
+            }
+          done
+
+          echo "SOURCE_DIR=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "V58 source successfully located and extracted."
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -85,21 +103,20 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Validate V58 sources
+      - name: Validate V58 project
         shell: bash
         run: |
           set -euo pipefail
 
-          node --check v58-source/web-admin/app.js
-          node --check v58-source/functions/index.js
+          node --check "$SOURCE_DIR/web-admin/app.js"
 
           grep -Eq 'versionCode[[:space:]]+58' \
-            v58-source/app/build.gradle
+            "$SOURCE_DIR/app/build.gradle"
 
           grep -Fq "1.58.0-mobile-money-receipts" \
-            v58-source/app/build.gradle
+            "$SOURCE_DIR/app/build.gradle"
 
-          echo "V58 source validation passed."
+          echo "V58 validation passed."
 
       - name: Configure official Android signing
         shell: bash
@@ -115,16 +132,13 @@ jobs:
           test -n "$KEY_PASSWORD"
 
           printf '%s' "$KEYSTORE_BASE64" \
-            | base64 --decode \
-            > v58-source/release-keystore.jks
+            | base64 --decode > "$SOURCE_DIR/release-keystore.jks"
 
-          chmod 600 v58-source/release-keystore.jks
-
-          export LC_ALL=C
+          chmod 600 "$SOURCE_DIR/release-keystore.jks"
 
           KEY_ALIAS=$(
             keytool -list -v \
-              -keystore v58-source/release-keystore.jks \
+              -keystore "$SOURCE_DIR/release-keystore.jks" \
               -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
               | awk -F': ' '/^Alias name:/{print $2; exit}'
           )
@@ -138,16 +152,17 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build official release APK
-        working-directory: v58-source
+        working-directory: .
         run: |
+          cd "$SOURCE_DIR"
           gradle --no-daemon clean :app:assembleRelease --stacktrace
 
-      - name: Verify official APK
+      - name: Verify installable signed APK
         shell: bash
         run: |
           set -euo pipefail
 
-          APK="v58-source/app/build/outputs/apk/release/app-release.apk"
+          APK="$SOURCE_DIR/app/build/outputs/apk/release/app-release.apk"
 
           test -s "$APK"
 
@@ -161,18 +176,18 @@ jobs:
           grep -Fq "versionCode='58'" apk-info.txt
           grep -Fq "versionName='1.58.0-mobile-money-receipts'" apk-info.txt
 
-          echo "Official V58 APK verified."
+          echo "Official signed APK verified."
 
-      - name: Upload official APK
+      - name: Upload official Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: YOUNGEST-BUSINESS-V58-OFFICIAL-ANDROID
-          path: v58-source/app/build/outputs/apk/release/app-release.apk
+          name: YOUNGEST-BUSINESS-V58-OFFICIAL-INSTALLABLE-APK
+          path: v58-source/**/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
 
   deploy-firebase:
-    name: Deploy V58 Web Admin and Firebase
+    name: Deploy Web Admin and Firestore Rules - Spark
     needs: build-android
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -181,29 +196,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate V58 source archive
+      - name: Locate and extract V58 source archive
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP=$(find . -maxdepth 2 -type f \
-            -iname '*V58*FINAL*CORRIGE*SOURCE*.zip' \
-            -print -quit)
-
-          test -n "$ZIP"
-          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
-
-      - name: Extract V58 deployment source
-        run: |
           mkdir -p v58-source
-          unzip -q "$SOURCE_ZIP" -d v58-source
+          FOUND=""
 
-          test -s v58-source/firebase.json
-          test -s v58-source/.firebaserc
-          test -s v58-source/web-admin/index.html
-          test -s v58-source/web-admin/app.js
-          test -s v58-source/firestore.rules
-          test -s v58-source/functions/index.js
+          while IFS= read -r -d '' ZIP; do
+            if unzip -Z1 "$ZIP" | grep -Eq '(^|/)web-admin/index.html$' &&
+               unzip -Z1 "$ZIP" | grep -Eq '(^|/)firebase.json$' &&
+               unzip -Z1 "$ZIP" | grep -Eq '(^|/)firestore.rules$'; then
+              FOUND="$ZIP"
+              break
+            fi
+          done < <(find . -type f -iname '*V58*.zip' -print0)
+
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: Valid V58 deployment archive not found."
+            find . -type f -iname '*.zip' -print
+            exit 1
+          fi
+
+          echo "Selected archive: $FOUND"
+          unzip -q "$FOUND" -d v58-source
+
+          FIREBASE_FILE=$(find v58-source -type f \
+            -path '*/firebase.json' -print -quit)
+
+          test -n "$FIREBASE_FILE"
+
+          PROJECT_ROOT=$(dirname "$FIREBASE_FILE")
+
+          test -s "$PROJECT_ROOT/.firebaserc"
+          test -s "$PROJECT_ROOT/web-admin/index.html"
+          test -s "$PROJECT_ROOT/web-admin/app.js"
+          test -s "$PROJECT_ROOT/firestore.rules"
+
+          echo "SOURCE_DIR=$PROJECT_ROOT" >> "$GITHUB_ENV"
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -212,8 +243,8 @@ jobs:
 
       - name: Validate Web Admin
         run: |
-          node --check v58-source/web-admin/app.js
-          node --check v58-source/functions/index.js
+          set -euo pipefail
+          node --check "$SOURCE_DIR/web-admin/app.js"
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
@@ -223,19 +254,19 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Install Cloud Functions dependencies
+      - name: Deploy Firebase Hosting and Firestore rules
+        shell: bash
         run: |
-          npm --prefix v58-source/functions install --omit=dev
+          set -euo pipefail
 
-      - name: Deploy Web Admin, Firestore and Functions
-        working-directory: v58-source
-        run: |
+          cd "$SOURCE_DIR"
+
           firebase deploy \
-            --only hosting,firestore:rules,functions \
+            --only hosting,firestore:rules \
             --project "$FIREBASE_PROJECT" \
             --non-interactive
 
-      - name: Confirm deployment
+      - name: Confirm Web deployment
         run: |
-          echo "YOUNGEST'S BUSINESS V58 deployment completed."
-          echo "Web Admin: https://youngestsbusiness.web.app"
+          echo "Web Admin deployment completed."
+          echo "https://youngestsbusiness.web.app"
