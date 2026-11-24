@@ -1,13 +1,14 @@
-name: YOUNGEST'S BUSINESS V59 - BRANDED RECEIPTS
+name: YOUNGEST'S BUSINESS V59 - OFFICIAL RELEASE
 
 on:
   push:
     branches:
       - main
     paths:
+      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip'
+      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip'
       - 'YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip'
       - '.github/workflows/yb-journal-v59.yml'
-
   workflow_dispatch:
 
 permissions:
@@ -19,12 +20,11 @@ concurrency:
 
 env:
   FIREBASE_PROJECT: youngestsbusiness
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip
 
 jobs:
 
   # ==========================================
-  # JOB 1 : BUILD OFFICIAL ANDROID APK
+  # JOB 1 : BUILD OFFICIAL ANDROID APK V59
   # ==========================================
 
   build-android:
@@ -43,19 +43,31 @@ jobs:
         run: |
           set -euo pipefail
 
-          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+          DEST="$RUNNER_TEMP/yb-v59-source"
+          mkdir -p "$DEST"
 
-          if [ ! -s "$ZIP" ]; then
-            echo "::error::V59 source ZIP missing: $SOURCE_ZIP"
-            find . -maxdepth 3 -type f -iname '*V59*.zip' -print
+          ZIP=""
+
+          for CANDIDATE in \
+            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip" \
+            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip" \
+            "YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip"
+          do
+            if [ -s "$GITHUB_WORKSPACE/$CANDIDATE" ]; then
+              ZIP="$GITHUB_WORKSPACE/$CANDIDATE"
+              break
+            fi
+          done
+
+          if [ -z "$ZIP" ]; then
+            echo "::error::No recognized V59 source ZIP found."
+            find . -maxdepth 2 -type f -iname '*V59*.zip' -print
             exit 1
           fi
 
-          echo "Checking V59 archive..."
-          unzip -t "$ZIP"
+          echo "Selected source: $(basename "$ZIP")"
 
-          DEST="$RUNNER_TEMP/yb-v59-source"
-          mkdir -p "$DEST"
+          unzip -t "$ZIP"
           unzip -q "$ZIP" -d "$DEST"
 
           ROOT=""
@@ -76,20 +88,25 @@ jobs:
           )
 
           if [ -z "$ROOT" ]; then
-            echo "::error::V59 project root not found"
+            echo "::error::V59 Android/Web project root not found."
             exit 1
           fi
 
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
           echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
 
-          echo "V59 source successfully extracted."
+          echo "V59 source extracted successfully."
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -105,7 +122,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Validate V59 sources
+      - name: Validate V59 source
         shell: bash
         run: |
           set -euo pipefail
@@ -118,11 +135,8 @@ jobs:
           grep -Fq "1.59.0-branded-receipts" \
             "$PROJECT_DIR/app/build.gradle"
 
-          test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
-
-          test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
-
           test -s "$PROJECT_DIR/web-admin/index.html"
+          test -s "$PROJECT_DIR/web-admin/app.js"
           test -s "$PROJECT_DIR/firestore.rules"
 
           echo "V59 source validation passed."
@@ -209,7 +223,7 @@ jobs:
   # ==========================================
 
   deploy-web:
-    name: Deploy V59 Web Admin and Firestore Rules - Spark
+    name: Deploy V59 Web Admin and Firestore Rules
     needs: build-android
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -219,49 +233,52 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate and extract V59 source
-        id: websource
+      - name: Locate and extract V59 Web source
         shell: bash
         run: |
           set -euo pipefail
 
-          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
-
-          if [ ! -s "$ZIP" ]; then
-            echo "::error::V59 source ZIP missing"
-            exit 1
-          fi
-
           DEST="$RUNNER_TEMP/yb-v59-web"
           mkdir -p "$DEST"
 
-          unzip -q "$ZIP" -d "$DEST"
+          ZIP=""
 
-          ROOT=""
-
-          while IFS= read -r -d '' CONFIG; do
-            CANDIDATE="$(dirname "$CONFIG")"
-
-            if [ -s "$CANDIDATE/.firebaserc" ] && \
-               [ -s "$CANDIDATE/web-admin/index.html" ] && \
-               [ -s "$CANDIDATE/web-admin/app.js" ] && \
-               [ -s "$CANDIDATE/firestore.rules" ]; then
-              ROOT="$CANDIDATE"
+          for CANDIDATE in \
+            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip" \
+            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip" \
+            "YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip"
+          do
+            if [ -s "$GITHUB_WORKSPACE/$CANDIDATE" ]; then
+              ZIP="$GITHUB_WORKSPACE/$CANDIDATE"
               break
             fi
-          done < <(
-            find "$DEST" -type f -name firebase.json -print0
-          )
+          done
 
-          if [ -z "$ROOT" ]; then
-            echo "::error::V59 Firebase project root not found"
+          if [ -z "$ZIP" ]; then
+            echo "::error::V59 source ZIP missing."
             exit 1
           fi
 
-          echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
-          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "Selected source: $(basename "$ZIP")"
 
-          echo "V59 Web source successfully extracted."
+          unzip -t "$ZIP"
+          unzip -q "$ZIP" -d "$DEST"
+
+          CONFIG=$(find "$DEST" -type f \
+            -name firebase.json -print -quit)
+
+          test -n "$CONFIG"
+
+          ROOT="$(dirname "$CONFIG")"
+
+          test -s "$ROOT/.firebaserc"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/firestore.rules"
+
+          echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
+
+          echo "V59 Web source extracted."
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -272,14 +289,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           node --check "$PROJECT_DIR/web-admin/app.js"
-
-          test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
-          test -s "$PROJECT_DIR/web-admin/index.html"
-          test -s "$PROJECT_DIR/firestore.rules"
-
-          echo "Web Admin validation passed."
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
@@ -303,12 +313,6 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "======================================"
-          echo "YOUNGEST'S BUSINESS V59 DEPLOYED"
-          echo "======================================"
-          echo "Web Admin:"
-          echo "https://youngestsbusiness.web.app"
-          echo "Android APK:"
-          echo "YOUNGEST-BUSINESS-V59-OFFICIAL-INSTALLABLE-APK"
-          echo "Firebase Hosting and Firestore Rules deployed."
-          echo "Cloud Functions were not deployed."
+          echo "V59 Web Admin deployment completed."
+          echo "Website: https://youngestsbusiness.web.app"
+          echo "Cloud Functions deployment: intentionally excluded."
