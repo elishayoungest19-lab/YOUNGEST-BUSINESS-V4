@@ -1,4 +1,4 @@
-name: YOUNGEST'S BUSINESS V59 - OFFICIAL RELEASE
+name: YOUNGEST'S BUSINESS V59 - BRANDED RECEIPTS CORRECTED
 
 on:
   push:
@@ -6,8 +6,6 @@ on:
       - main
     paths:
       - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip'
-      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip'
-      - 'YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip'
       - '.github/workflows/yb-journal-v59.yml'
   workflow_dispatch:
 
@@ -20,11 +18,12 @@ concurrency:
 
 env:
   FIREBASE_PROJECT: youngestsbusiness
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip
 
 jobs:
 
   # ==========================================
-  # JOB 1 : BUILD OFFICIAL ANDROID APK V59
+  # 1. BUILD ANDROID APK V59
   # ==========================================
 
   build-android:
@@ -33,80 +32,48 @@ jobs:
     timeout-minutes: 50
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate and extract V59 source
-        id: locate
+      - name: Extract the correct V59 project
         shell: bash
         run: |
           set -euo pipefail
 
-          DEST="$RUNNER_TEMP/yb-v59-source"
-          mkdir -p "$DEST"
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
 
-          ZIP=""
-
-          for CANDIDATE in \
-            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip" \
-            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip" \
-            "YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip"
-          do
-            if [ -s "$GITHUB_WORKSPACE/$CANDIDATE" ]; then
-              ZIP="$GITHUB_WORKSPACE/$CANDIDATE"
-              break
-            fi
-          done
-
-          if [ -z "$ZIP" ]; then
-            echo "::error::No recognized V59 source ZIP found."
-            find . -maxdepth 2 -type f -iname '*V59*.zip' -print
+          if [ ! -s "$ZIP" ]; then
+            echo "::error::V59 source ZIP missing: $SOURCE_ZIP"
+            find "$GITHUB_WORKSPACE" -maxdepth 2 -type f -iname '*V59*.zip'
             exit 1
           fi
 
-          echo "Selected source: $(basename "$ZIP")"
-
           unzip -t "$ZIP"
+
+          DEST="$RUNNER_TEMP/yb-v59-source"
+          mkdir -p "$DEST"
           unzip -q "$ZIP" -d "$DEST"
 
-          ROOT=""
+          ROOT="$DEST/yb59"
 
-          while IFS= read -r -d '' INDEX; do
-            CANDIDATE="$(dirname "$(dirname "$INDEX")")"
-
-            if [ -s "$CANDIDATE/app/build.gradle" ] && \
-               [ -s "$CANDIDATE/settings.gradle" ] && \
-               [ -s "$CANDIDATE/web-admin/app.js" ] && \
-               [ -s "$CANDIDATE/firebase.json" ]; then
-              ROOT="$CANDIDATE"
-              break
-            fi
-          done < <(
-            find "$DEST" -type f \
-              -path '*/web-admin/index.html' -print0
-          )
-
-          if [ -z "$ROOT" ]; then
-            echo "::error::V59 Android/Web project root not found."
+          if [ ! -s "$ROOT/app/build.gradle" ] || \
+             [ ! -s "$ROOT/settings.gradle" ] || \
+             [ ! -s "$ROOT/web-admin/app.js" ] || \
+             [ ! -s "$ROOT/web-admin/index.html" ] || \
+             [ ! -s "$ROOT/firebase.json" ]; then
+            echo "::error::The corrected yb59 project is incomplete."
             exit 1
           fi
 
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
-          echo "project_dir=$ROOT" >> "$GITHUB_OUTPUT"
 
-          echo "V59 source extracted successfully."
+          echo "Correct V59 project selected: yb59"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -122,7 +89,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Validate V59 source
+      - name: Validate V59 receipt corrections
         shell: bash
         run: |
           set -euo pipefail
@@ -135,11 +102,26 @@ jobs:
           grep -Fq "1.59.0-branded-receipts" \
             "$PROJECT_DIR/app/build.gradle"
 
-          test -s "$PROJECT_DIR/web-admin/index.html"
-          test -s "$PROJECT_DIR/web-admin/app.js"
-          test -s "$PROJECT_DIR/firestore.rules"
+          grep -Fq 'app.js?v=59.2-receipt-fix' \
+            "$PROJECT_DIR/web-admin/index.html"
 
-          echo "V59 source validation passed."
+          grep -Fq "x.currency==='USD'?'USD':'FC (CDF)'" \
+            "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq '817 447 127' \
+            "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq '994 565 534' \
+            "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq '646 604 75' \
+            "$PROJECT_DIR/web-admin/app.js"
+
+          test -s "$PROJECT_DIR/web-admin/logo_youngests_business.png"
+
+          test -s "$PROJECT_DIR/app/src/main/res/drawable/logo_youngests_business.png"
+
+          echo "V59 validation passed."
 
       - name: Configure official Android signing
         shell: bash
@@ -214,63 +196,43 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: YOUNGEST-BUSINESS-V59-OFFICIAL-INSTALLABLE-APK
-          path: ${{ steps.locate.outputs.project_dir }}/app/build/outputs/apk/release/app-release.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
 
   # ==========================================
-  # JOB 2 : DEPLOY WEB ADMIN AND FIRESTORE
+  # 2. DEPLOY WEB ADMIN AND FIRESTORE RULES
   # ==========================================
 
   deploy-web:
-    name: Deploy V59 Web Admin and Firestore Rules
+    name: Deploy Corrected V59 Web Admin - Spark
     needs: build-android
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate and extract V59 Web source
+      - name: Extract the same corrected V59 project
         shell: bash
         run: |
           set -euo pipefail
 
+          ZIP="$GITHUB_WORKSPACE/$SOURCE_ZIP"
+
+          test -s "$ZIP" || {
+            echo "::error::V59 source ZIP missing"
+            exit 1
+          }
+
           DEST="$RUNNER_TEMP/yb-v59-web"
           mkdir -p "$DEST"
-
-          ZIP=""
-
-          for CANDIDATE in \
-            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip" \
-            "YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE.zip" \
-            "YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip"
-          do
-            if [ -s "$GITHUB_WORKSPACE/$CANDIDATE" ]; then
-              ZIP="$GITHUB_WORKSPACE/$CANDIDATE"
-              break
-            fi
-          done
-
-          if [ -z "$ZIP" ]; then
-            echo "::error::V59 source ZIP missing."
-            exit 1
-          fi
-
-          echo "Selected source: $(basename "$ZIP")"
-
-          unzip -t "$ZIP"
           unzip -q "$ZIP" -d "$DEST"
 
-          CONFIG=$(find "$DEST" -type f \
-            -name firebase.json -print -quit)
+          ROOT="$DEST/yb59"
 
-          test -n "$CONFIG"
-
-          ROOT="$(dirname "$CONFIG")"
-
+          test -s "$ROOT/firebase.json"
           test -s "$ROOT/.firebaserc"
           test -s "$ROOT/web-admin/index.html"
           test -s "$ROOT/web-admin/app.js"
@@ -278,18 +240,27 @@ jobs:
 
           echo "PROJECT_DIR=$ROOT" >> "$GITHUB_ENV"
 
-          echo "V59 Web source extracted."
+          echo "Correct yb59 Web Admin selected."
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
-      - name: Validate Web Admin
+      - name: Validate corrected Web Admin
         shell: bash
         run: |
           set -euo pipefail
+
           node --check "$PROJECT_DIR/web-admin/app.js"
+
+          grep -Fq 'app.js?v=59.2-receipt-fix' \
+            "$PROJECT_DIR/web-admin/index.html"
+
+          grep -Fq "x.currency==='USD'?'USD':'FC (CDF)'" \
+            "$PROJECT_DIR/web-admin/app.js"
+
+          echo "Web receipt validation passed."
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
@@ -313,6 +284,5 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "V59 Web Admin deployment completed."
-          echo "Website: https://youngestsbusiness.web.app"
-          echo "Cloud Functions deployment: intentionally excluded."
+          echo "V59 corrected Web Admin deployment completed."
+          echo "https://youngestsbusiness.web.app"
