@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip'
+      - 'YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip'
       - '.github/workflows/yb-journal-v59.yml'
 
   workflow_dispatch:
@@ -19,7 +19,7 @@ concurrency:
 
 env:
   FIREBASE_PROJECT: youngestsbusiness
-  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-BRANDED-RECEIPTS-SOURCE-CACHE-FIX.zip
+  SOURCE_ZIP: YOUNGEST-BUSINESS-V59-FIX-LOGO-CONTACTS-RECEIPT.zip
 
 jobs:
 
