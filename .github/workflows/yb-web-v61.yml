@@ -1,0 +1,147 @@
+name: YOUNGEST'S BUSINESS V61 - PC WEB ADMIN ONLY
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'YOUNGEST-BUSINESS-V61-PC-WEB-ADMIN-LOGIN-DASHBOARD.zip'
+      - '.github/workflows/yb-web-v61.yml'
+
+  workflow_dispatch:
+
+concurrency:
+  group: youngest-business-v61-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-web:
+    name: Validate and Deploy V61 Web Admin
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      # 1. Récupération du dépôt GitHub
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Vérification et extraction du ZIP complet
+      - name: Extract V61 complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V61-PC-WEB-ADMIN-LOGIN-DASHBOARD.zip"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: V61 source ZIP not found"
+            exit 1
+          fi
+
+          unzip -t "$ZIP"
+
+          EXTRACT="$RUNNER_TEMP/yb-v61-source"
+          mkdir -p "$EXTRACT"
+
+          unzip -q "$ZIP" -d "$EXTRACT"
+
+          # Select the root-level Web Admin.
+          ROOT="$EXTRACT"
+
+          test -s "$ROOT/firebase.json"
+          test -s "$ROOT/.firebaserc"
+          test -s "$ROOT/web-admin/index.html"
+          test -s "$ROOT/web-admin/app.js"
+          test -s "$ROOT/web-admin/styles.css"
+
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+
+          echo "V61 source extracted successfully"
+
+      # 3. Configuration Node.js
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 4. Vérification du projet Firebase
+      - name: Verify Firebase project
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('.firebaserc', 'utf8'));
+            if (p.projects.default !== 'youngestsbusiness') {
+              throw new Error('Unexpected Firebase project');
+            }
+
+            const f = JSON.parse(fs.readFileSync('firebase.json', 'utf8'));
+            if (!f.hosting || f.hosting.public !== 'web-admin') {
+              throw new Error('Firebase Hosting must use web-admin');
+            }
+
+            console.log('Firebase configuration verified');
+          "
+
+      # 5. Vérification du Login V61
+      - name: Verify V61 login and dashboard
+        working-directory: ${{ env.PROJECT_ROOT }}/web-admin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -q 'id="loginView"' index.html
+          grep -q 'id="loginForm"' index.html
+          grep -q 'id="email"' index.html
+          grep -q 'id="password"' index.html
+
+          grep -q 'signInWithEmailAndPassword' app.js
+
+          grep -q 'v=61-pc-admin' index.html
+
+          echo "V61 login markers verified"
+
+      # 6. Contrôle JavaScript
+      - name: Validate JavaScript
+        working-directory: ${{ env.PROJECT_ROOT }}/web-admin
+        run: |
+          node --check app.js
+
+      # 7. Installation Firebase CLI
+      - name: Install Firebase CLI
+        run: |
+          npm install --global firebase-tools
+
+      # 8. Authentification Firebase
+      - name: Authenticate Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: youngestsbusiness
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      # 9. Déploiement Web uniquement
+      - name: Deploy V61 to Firebase Hosting
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          firebase deploy \
+            --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
+
+      # 10. Confirmation
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "YOUNGEST'S BUSINESS V61 Web Admin deployed successfully."
+          echo "Firebase project: youngestsbusiness"
+          echo "Hosting: https://youngestsbusiness.web.app"
+          echo "Android APK compilation: NOT RUN"
