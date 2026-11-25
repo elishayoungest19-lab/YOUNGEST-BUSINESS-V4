@@ -1,0 +1,127 @@
+name: YOUNGEST'S BUSINESS V62 - WEB DASHBOARD ONLY
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'YOUNGEST-BUSINESS-V62-PC-LANDSCAPE-FINAL-SOURCE.zip'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-web-v62:
+    name: Validate and Deploy Web Dashboard V62
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify V62 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="YOUNGEST-BUSINESS-V62-PC-LANDSCAPE-FINAL-SOURCE.zip"
+
+          test -f "$ZIP"
+          echo "V62 source archive found."
+
+          unzip -t "$ZIP"
+
+          mkdir -p "$RUNNER_TEMP/yb-v62"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP/yb-v62"
+
+          cd "$RUNNER_TEMP/yb-v62"
+
+          test -f web-admin/index.html
+          test -f web-admin/app.js
+          test -f web-admin/styles.css
+          test -f firebase.json
+          test -f .firebaserc
+
+          node --check web-admin/app.js
+
+          echo "V62 Web Admin files verified."
+
+      - name: Verify Firebase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/yb-v62"
+
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const config = JSON.parse(
+            fs.readFileSync('firebase.json', 'utf8')
+          );
+
+          const project = JSON.parse(
+            fs.readFileSync('.firebaserc', 'utf8')
+          );
+
+          if (config.hosting?.public !== 'web-admin') {
+            throw new Error('Hosting destination must be web-admin');
+          }
+
+          if (project.projects?.default !== 'youngestsbusiness') {
+            throw new Error('Unexpected Firebase project');
+          }
+
+          console.log('Firebase project: youngestsbusiness');
+          console.log('Hosting directory: web-admin');
+          NODE
+
+      - name: Check Firebase secret
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON secret."
+            exit 1
+          fi
+
+          echo "Firebase authentication secret is available."
+
+      - name: Authenticate with Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Web Dashboard V62 only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$RUNNER_TEMP/yb-v62"
+
+          firebase deploy \
+            --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
+
+      - name: Deployment summary
+        run: |
+          echo "YOUNGEST'S BUSINESS V62 Web Admin deployment completed."
+          echo "Target: Firebase Hosting"
+          echo "Project: youngestsbusiness"
+          echo "Android APK: Not built"
+          echo "Firestore rules: Not deployed"
+          echo "Cloud Functions: Not deployed"
