@@ -1,153 +1,86 @@
-name: YOUNGEST'S BUSINESS V60 - OFFICIAL ANDROID + WEB RELEASE
+name: YOUNGEST'S BUSINESS V60 — WEB ADMIN ONLY
 
 on:
   push:
     branches: [main]
     paths:
-      - 'YOUNGEST-BUSINESS-V60-COMPLET-SOURCE.zip'
+      - 'YOUNGEST-BUSINESS-V60-PC-WEB-ONLY-REFRESH-20261125.zip'
       - '.github/workflows/yb-journal-v60.yml'
   workflow_dispatch:
+
+concurrency:
+  group: youngest-business-v60-web-deploy
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: youngest-business-v60-release
-  cancel-in-progress: false
-
 jobs:
-  build-android:
-    name: Build Official Signed Android APK V60
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Extract and validate V60 source
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V60-COMPLET-SOURCE.zip"
-          test -s "$ZIP"
-          mkdir -p "$RUNNER_TEMP/yb-v60-android"
-          unzip -q "$ZIP" -d "$RUNNER_TEMP/yb-v60-android"
-          ROOT=$(find "$RUNNER_TEMP/yb-v60-android" -type f -path '*/app/build.gradle' -print -quit | sed 's#/app/build.gradle$##')
-          test -n "$ROOT"
-          test -s "$ROOT/settings.gradle"
-          test -s "$ROOT/app/google-services.json"
-          grep -q 'versionCode 60' "$ROOT/app/build.gradle"
-          grep -Fq "versionName '1.60.0-separated-expenses'" "$ROOT/app/build.gradle"
-          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "V60 Android source verified at $ROOT"
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android SDK packages
-        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
-
-      - name: Setup Gradle 8.9 with cache
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Configure official signing key
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          test -n "$KEYSTORE_PASSWORD"
-          test -n "$KEY_PASSWORD"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$PROJECT_ROOT/release-keystore.jks"
-          chmod 600 "$PROJECT_ROOT/release-keystore.jks"
-          ALIAS=$(keytool -list -v -keystore "$PROJECT_ROOT/release-keystore.jks" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -1)
-          test -n "$ALIAS"
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$ALIAS"
-          } >> "$GITHUB_ENV"
-
-      - name: Build V60 release APK
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: gradle --no-daemon --build-cache --parallel :app:assembleRelease --stacktrace
-
-      - name: Verify signed APK and version 60
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK=$(find "$PROJECT_ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
-          test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > "$RUNNER_TEMP/v60-apk-badging.txt"
-          grep -Fq "com.aistudio.youngestbiz.mbkz" "$RUNNER_TEMP/v60-apk-badging.txt"
-          grep -Fq "versionCode='60'" "$RUNNER_TEMP/v60-apk-badging.txt"
-          grep -Fq "versionName='1.60.0-separated-expenses'" "$RUNNER_TEMP/v60-apk-badging.txt"
-          echo "Verified V60 signed APK: $APK"
-
-      - name: Upload V60 installable APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: YOUNGEST-BUSINESS-V60-OFFICIAL-INSTALLABLE-APK
-          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-          retention-days: 90
-
   deploy-web:
-    name: Deploy V60 Web Admin to Firebase Hosting
+    name: Validate and deploy Web Admin V60 only
     runs-on: ubuntu-latest
     timeout-minutes: 25
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract and validate V60 Web source
+      - name: Extract the complete V60 source ZIP and select its root Web Admin
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V60-COMPLET-SOURCE.zip"
-          test -s "$ZIP"
-          mkdir -p "$RUNNER_TEMP/yb-v60-web"
-          unzip -q "$ZIP" -d "$RUNNER_TEMP/yb-v60-web"
-          ROOT=$(find "$RUNNER_TEMP/yb-v60-web" -type f -path '*/web-admin/index.html' -print -quit | sed 's#/web-admin/index.html$##')
-          test -n "$ROOT"
+
+          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V60-PC-WEB-ONLY-REFRESH-20261125.zip"
+
+          test -f "$ZIP" || {
+            echo "Complete V60 source ZIP missing"
+            exit 1
+          }
+
+          unzip -t "$ZIP"
+
+          EXTRACT="$RUNNER_TEMP/yb-v60-web"
+          mkdir -p "$EXTRACT"
+          unzip -q "$ZIP" -d "$EXTRACT"
+
+          # Use the root-level Firebase project and Web Admin.
+          ROOT="$EXTRACT"
+
           test -s "$ROOT/firebase.json"
           test -s "$ROOT/.firebaserc"
+          test -s "$ROOT/web-admin/index.html"
           test -s "$ROOT/web-admin/app.js"
-          grep -Fq 'app.js?v=60-separated-expenses' "$ROOT/web-admin/index.html"
-          grep -Fq '"public": "web-admin"' "$ROOT/firebase.json"
-          grep -Fq 'youngestsbusiness' "$ROOT/.firebaserc"
+
+          grep -q '"default"[[:space:]]*:[[:space:]]*"youngestsbusiness"' "$ROOT/.firebaserc"
+
           echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "V60 Web source verified at $ROOT"
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate V60 Web JavaScript
+      - name: Validate Web Admin JavaScript
         working-directory: ${{ env.PROJECT_ROOT }}/web-admin
         run: node --check app.js
+
+      - name: Verify Firebase Hosting target
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: |
+          grep -q '"public"[[:space:]]*:[[:space:]]*"web-admin"' firebase.json
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Authenticate Firebase service account
+      - name: Authenticate Firebase
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
-      - name: Deploy V60 Hosting only (Spark plan)
+      - name: Deploy Firebase Hosting only
         working-directory: ${{ env.PROJECT_ROOT }}
-        run: firebase deploy --only hosting --project youngestsbusiness --non-interactive
+        run: |
+          firebase deploy \
+            --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
