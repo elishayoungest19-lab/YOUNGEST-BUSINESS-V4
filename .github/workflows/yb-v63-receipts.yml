@@ -3,13 +3,6 @@ name: YOUNGEST'S BUSINESS V63 - RECEIPTS QR AND OPERATOR MARKS
 on:
   workflow_dispatch:
 
-  push:
-    branches:
-      - main
-    paths:
-      - 'YOUNGEST-BUSINESS-V63-RECEIPTS-QR-OPERATORS-SOURCE.zip'
-      - '.github/workflows/yb-v63-receipts.yml'
-
 permissions:
   contents: read
 
@@ -38,7 +31,6 @@ jobs:
           set -euo pipefail
 
           ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V63-RECEIPTS-QR-OPERATORS-SOURCE.zip"
-
           test -s "$ZIP"
           unzip -t "$ZIP"
 
@@ -48,7 +40,9 @@ jobs:
 
           test -s "$DEST/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
           test -s "$DEST/app/build.gradle"
+          test -s "$DEST/web-admin/index.html"
           test -s "$DEST/web-admin/app.js"
+          test -s "$DEST/web-admin/styles.css"
           test -s "$DEST/web-admin/verify.html"
           test -s "$DEST/functions/index.js"
           test -s "$DEST/functions/package.json"
@@ -60,21 +54,33 @@ jobs:
 
           grep -q "verifyMobileMoneyReceipt" "$DEST/functions/index.js"
           grep -q "com.google.zxing:core" "$DEST/app/build.gradle"
+          grep -Eq 'versionCode[[:space:]]+63' "$DEST/app/build.gradle"
+          grep -Fq "1.63.0-branded-receipts-qr" "$DEST/app/build.gradle"
 
-          node -e "
-            const f = require('$DEST/firebase.json');
-            const p = require('$DEST/.firebaserc');
+          V63_CHECK_ROOT="$DEST" node -e "
+            const fs = require('fs');
+            const path = require('path');
+            const root = process.env.V63_CHECK_ROOT;
 
-            if (f.hosting?.public !== 'web-admin')
-              throw Error('Hosting folder must be web-admin');
+            const firebase = JSON.parse(
+              fs.readFileSync(path.join(root, 'firebase.json'), 'utf8')
+            );
 
-            if (p.projects?.default !== 'youngestsbusiness')
-              throw Error('Wrong Firebase project');
+            const firebaserc = JSON.parse(
+              fs.readFileSync(path.join(root, '.firebaserc'), 'utf8')
+            );
+
+            if (firebase.hosting?.public !== 'web-admin')
+              throw new Error('Firebase Hosting public folder must be web-admin');
+
+            if (firebaserc.projects?.default !== 'youngestsbusiness')
+              throw new Error('Wrong Firebase project in .firebaserc');
 
             console.log('Firebase configuration verified.');
           "
 
           echo "V63_ROOT=$DEST" >> "$GITHUB_ENV"
+          echo "V63 source archive validated successfully."
 
       - name: Check Firebase service account secret
         shell: bash
