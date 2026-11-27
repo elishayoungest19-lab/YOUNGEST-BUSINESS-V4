@@ -54,7 +54,21 @@ jobs:
           grep -Fq "versionName '1.65.0-one-page-receipt'" "$DEST/app/build.gradle"
           grep -q '@page{size:A4 portrait;margin:5mm}' "$DEST/web-admin/app.js"
 
-          node -e "const f=require('$DEST/firebase.json');const p=require('$DEST/.firebaserc');if(f.hosting?.public!=='web-admin')throw Error('Hosting public must be web-admin');if(p.projects?.default!=='youngestsbusiness')throw Error('Wrong Firebase project');"
+          node -e "
+            const fs = require('fs');
+            const firebase = JSON.parse(fs.readFileSync('$DEST/firebase.json', 'utf8'));
+            const project = JSON.parse(fs.readFileSync('$DEST/.firebaserc', 'utf8'));
+
+            if (firebase.hosting?.public !== 'web-admin') {
+              throw new Error('Hosting public must be web-admin');
+            }
+
+            if (project.projects?.default !== 'youngestsbusiness') {
+              throw new Error('Wrong Firebase project');
+            }
+
+            console.log('Firebase configuration validated.');
+          "
 
           echo "V65_ROOT=$DEST" >> "$GITHUB_ENV"
 
@@ -64,14 +78,16 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
+
           test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
             echo 'Missing FIREBASE_SERVICE_ACCOUNT_JSON'
             exit 1
           }
 
           echo "$FIREBASE_SERVICE_ACCOUNT_JSON" | node -e "
-            let s='';
-            process.stdin.on('data',d=>s+=d).on('end',()=>{
+            let s = '';
+            process.stdin.on('data', d => s += d);
+            process.stdin.on('end', () => {
               JSON.parse(s);
               console.log('Firebase service account JSON is valid.');
             });
