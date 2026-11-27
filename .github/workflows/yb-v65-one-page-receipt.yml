@@ -1,0 +1,99 @@
+name: YOUNGEST'S BUSINESS V65 - ONE PAGE RECEIPT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'YOUNGEST-BUSINESS-V65-ONE-PAGE-RECEIPT-SOURCE.zip'
+      - '.github/workflows/yb-v65-one-page-receipt.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yb-v65-one-page-receipt-hosting
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    name: Validate V65 and deploy Firebase Hosting only
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract and validate V65 source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V65-ONE-PAGE-RECEIPT-SOURCE.zip"
+          test -s "$ZIP"
+          unzip -t "$ZIP"
+
+          DEST="$RUNNER_TEMP/yb-v65"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP" -d "$DEST"
+
+          test -s "$DEST/web-admin/app.js"
+          test -s "$DEST/web-admin/index.html"
+          test -s "$DEST/firebase.json"
+          test -s "$DEST/.firebaserc"
+
+          node --check "$DEST/web-admin/app.js"
+
+          grep -q 'versionCode 65' "$DEST/app/build.gradle"
+          grep -Fq "versionName '1.65.0-one-page-receipt'" "$DEST/app/build.gradle"
+          grep -q '@page{size:A4 portrait;margin:5mm}' "$DEST/web-admin/app.js"
+
+          node -e "const f=require('$DEST/firebase.json');const p=require('$DEST/.firebaserc');if(f.hosting?.public!=='web-admin')throw Error('Hosting public must be web-admin');if(p.projects?.default!=='youngestsbusiness')throw Error('Wrong Firebase project');"
+
+          echo "V65_ROOT=$DEST" >> "$GITHUB_ENV"
+
+      - name: Check Firebase service account secret
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
+            echo 'Missing FIREBASE_SERVICE_ACCOUNT_JSON'
+            exit 1
+          }
+
+          echo "$FIREBASE_SERVICE_ACCOUNT_JSON" | node -e "
+            let s='';
+            process.stdin.on('data',d=>s+=d).on('end',()=>{
+              JSON.parse(s);
+              console.log('Firebase service account JSON is valid.');
+            });
+          "
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Hosting only
+        working-directory: ${{ env.V65_ROOT }}
+        run: firebase deploy --only hosting --project youngestsbusiness --non-interactive
+
+      - name: Deployment summary
+        run: |
+          {
+            echo '## YOUNGEST’S BUSINESS V65'
+            echo '- Web Admin receipt print layout compacted for one A4 page.'
+            echo '- Firebase Hosting only.'
+            echo '- Cloud Functions and Firestore rules were not deployed.'
+          } >> "$GITHUB_STEP_SUMMARY"
