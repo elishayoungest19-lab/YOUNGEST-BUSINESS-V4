@@ -1,4 +1,4 @@
-name: YOUNGEST'S BUSINESS V63 - RECEIPTS QR AND OPERATOR MARKS
+name: YOUNGEST'S BUSINESS V63 - SPARK HOSTING ONLY
 
 on:
   workflow_dispatch:
@@ -7,108 +7,127 @@ permissions:
   contents: read
 
 concurrency:
-  group: yb-v63-receipts-deploy
+  group: yb-v63-spark-hosting
   cancel-in-progress: false
 
 jobs:
   validate-and-deploy:
-    name: Validate V63 and deploy Hosting plus receipt verifier
+    name: Validate V63 and deploy Firebase Hosting only
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Extract and validate V63 source
+      - name: Extract V63 source archive
         shell: bash
         run: |
           set -euo pipefail
 
           ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V63-RECEIPTS-QR-OPERATORS-SOURCE.zip"
-          test -s "$ZIP"
+
+          if [ ! -s "$ZIP" ]; then
+            echo "ERROR: V63 source ZIP not found."
+            exit 1
+          fi
+
           unzip -t "$ZIP"
 
           DEST="$RUNNER_TEMP/yb-v63"
           mkdir -p "$DEST"
           unzip -q "$ZIP" -d "$DEST"
 
-          test -s "$DEST/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
-          test -s "$DEST/app/build.gradle"
-          test -s "$DEST/web-admin/index.html"
-          test -s "$DEST/web-admin/app.js"
-          test -s "$DEST/web-admin/styles.css"
-          test -s "$DEST/web-admin/verify.html"
-          test -s "$DEST/functions/index.js"
-          test -s "$DEST/functions/package.json"
-          test -s "$DEST/firebase.json"
-          test -s "$DEST/.firebaserc"
+          for FILE in \
+            app/build.gradle \
+            web-admin/index.html \
+            web-admin/app.js \
+            web-admin/styles.css \
+            web-admin/verify.html \
+            web-admin/logo_youngests_business.png \
+            firebase.json \
+            .firebaserc; do
 
-          node --check "$DEST/web-admin/app.js"
-          node --check "$DEST/functions/index.js"
+            if [ ! -s "$DEST/$FILE" ]; then
+              echo "ERROR: Missing file: $FILE"
+              exit 1
+            fi
+          done
 
-          grep -q "verifyMobileMoneyReceipt" "$DEST/functions/index.js"
-          grep -q "com.google.zxing:core" "$DEST/app/build.gradle"
-          grep -Eq 'versionCode[[:space:]]+63' "$DEST/app/build.gradle"
-          grep -Fq "1.63.0-branded-receipts-qr" "$DEST/app/build.gradle"
+          echo "V63_ROOT=$DEST" >> "$GITHUB_ENV"
 
-          V63_CHECK_ROOT="$DEST" node -e "
+          echo "V63 archive extracted successfully."
+
+      - name: Validate V63 Web Admin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node --check "$V63_ROOT/web-admin/app.js"
+
+          grep -Eq 'versionCode[[:space:]]+63' \
+            "$V63_ROOT/app/build.gradle"
+
+          grep -Fq "1.63.0-branded-receipts-qr" \
+            "$V63_ROOT/app/build.gradle"
+
+          echo "Android V63 source version confirmed."
+          echo "Web Admin JavaScript syntax is valid."
+
+      - name: Validate Firebase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V63_ROOT="$V63_ROOT" node -e "
             const fs = require('fs');
             const path = require('path');
-            const root = process.env.V63_CHECK_ROOT;
+            const root = process.env.V63_ROOT;
 
             const firebase = JSON.parse(
               fs.readFileSync(path.join(root, 'firebase.json'), 'utf8')
             );
 
-            const firebaserc = JSON.parse(
+            const project = JSON.parse(
               fs.readFileSync(path.join(root, '.firebaserc'), 'utf8')
             );
 
-            if (firebase.hosting?.public !== 'web-admin')
-              throw new Error('Firebase Hosting public folder must be web-admin');
+            if (firebase.hosting?.public !== 'web-admin') {
+              throw new Error('Incorrect Hosting public directory.');
+            }
 
-            if (firebaserc.projects?.default !== 'youngestsbusiness')
-              throw new Error('Wrong Firebase project in .firebaserc');
+            if (project.projects?.default !== 'youngestsbusiness') {
+              throw new Error('Incorrect Firebase project.');
+            }
 
-            console.log('Firebase configuration verified.');
+            console.log('Firebase project and Hosting configuration verified.');
           "
 
-          echo "V63_ROOT=$DEST" >> "$GITHUB_ENV"
-          echo "V63 source archive validated successfully."
-
-      - name: Check Firebase service account secret
+      - name: Check Firebase credentials
         shell: bash
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
 
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
-            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON"
-            exit 1
-          }
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON"
 
           echo "$FIREBASE_SERVICE_ACCOUNT_JSON" |
             node -e "
-              let s = '';
-              process.stdin.on('data', d => s += d);
+              let input = '';
+              process.stdin.on('data', data => input += data);
               process.stdin.on('end', () => {
-                JSON.parse(s);
-                console.log('Firebase service account JSON is valid.');
+                JSON.parse(input);
+                console.log('Firebase credentials are valid.');
               });
             "
 
-      - name: Install Functions dependencies
-        working-directory: ${{ env.V63_ROOT }}/functions
-        run: npm install --omit=dev
-
-      - name: Authenticate with Google Cloud
+      - name: Authenticate Firebase
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -116,20 +135,26 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy Web Hosting and receipt verification function only
-        working-directory: ${{ env.V63_ROOT }}
+      - name: Deploy Firebase Hosting ONLY
+        shell: bash
+        working-directory: ${{ runner.temp }}/yb-v63
         run: |
+          set -euo pipefail
+
           firebase deploy \
-            --only hosting,functions:verifyMobileMoneyReceipt \
+            --only hosting \
             --project youngestsbusiness \
             --non-interactive
 
       - name: Deployment summary
         run: |
           {
-            echo "## YOUNGEST'S BUSINESS V63 deployment"
-            echo "- Firebase Hosting: deployed"
-            echo "- Receipt verification function: verifyMobileMoneyReceipt"
-            echo "- Firestore rules: not deployed or changed"
-            echo "- Android APK: not built by this workflow"
+            echo "## YOUNGEST'S BUSINESS V63 - SPARK"
+            echo "- Firebase Hosting: deployment requested"
+            echo "- Android source: V63 validated"
+            echo "- Cloud Functions: NOT deployed"
+            echo "- Cloud Build: NOT requested"
+            echo "- Artifact Registry: NOT requested"
+            echo "- Firestore rules: NOT modified"
+            echo "- Billing activation: NOT requested"
           } >> "$GITHUB_STEP_SUMMARY"
