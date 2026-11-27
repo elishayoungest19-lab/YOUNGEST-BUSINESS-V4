@@ -1,9 +1,6 @@
 name: YOUNGEST'S BUSINESS V58 - OFFICIAL RELEASE SPARK
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
