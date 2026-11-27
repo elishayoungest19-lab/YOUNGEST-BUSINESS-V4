@@ -1,0 +1,129 @@
+name: YOUNGEST'S BUSINESS V63 - RECEIPTS QR AND OPERATOR MARKS
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'YOUNGEST-BUSINESS-V63-RECEIPTS-QR-OPERATORS-SOURCE.zip'
+      - '.github/workflows/yb-v63-receipts.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yb-v63-receipts-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    name: Validate V63 and deploy Hosting plus receipt verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract and validate V63 source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V63-RECEIPTS-QR-OPERATORS-SOURCE.zip"
+
+          test -s "$ZIP"
+          unzip -t "$ZIP"
+
+          DEST="$RUNNER_TEMP/yb-v63"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP" -d "$DEST"
+
+          test -s "$DEST/app/src/main/java/com/aistudio/youngestbiz/mbkz/MainActivity.java"
+          test -s "$DEST/app/build.gradle"
+          test -s "$DEST/web-admin/app.js"
+          test -s "$DEST/web-admin/verify.html"
+          test -s "$DEST/functions/index.js"
+          test -s "$DEST/functions/package.json"
+          test -s "$DEST/firebase.json"
+          test -s "$DEST/.firebaserc"
+
+          node --check "$DEST/web-admin/app.js"
+          node --check "$DEST/functions/index.js"
+
+          grep -q "verifyMobileMoneyReceipt" "$DEST/functions/index.js"
+          grep -q "com.google.zxing:core" "$DEST/app/build.gradle"
+
+          node -e "
+            const f = require('$DEST/firebase.json');
+            const p = require('$DEST/.firebaserc');
+
+            if (f.hosting?.public !== 'web-admin')
+              throw Error('Hosting folder must be web-admin');
+
+            if (p.projects?.default !== 'youngestsbusiness')
+              throw Error('Wrong Firebase project');
+
+            console.log('Firebase configuration verified.');
+          "
+
+          echo "V63_ROOT=$DEST" >> "$GITHUB_ENV"
+
+      - name: Check Firebase service account secret
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON"
+            exit 1
+          }
+
+          echo "$FIREBASE_SERVICE_ACCOUNT_JSON" |
+            node -e "
+              let s = '';
+              process.stdin.on('data', d => s += d);
+              process.stdin.on('end', () => {
+                JSON.parse(s);
+                console.log('Firebase service account JSON is valid.');
+              });
+            "
+
+      - name: Install Functions dependencies
+        working-directory: ${{ env.V63_ROOT }}/functions
+        run: npm install --omit=dev
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Web Hosting and receipt verification function only
+        working-directory: ${{ env.V63_ROOT }}
+        run: |
+          firebase deploy \
+            --only hosting,functions:verifyMobileMoneyReceipt \
+            --project youngestsbusiness \
+            --non-interactive
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "## YOUNGEST'S BUSINESS V63 deployment"
+            echo "- Firebase Hosting: deployed"
+            echo "- Receipt verification function: verifyMobileMoneyReceipt"
+            echo "- Firestore rules: not deployed or changed"
+            echo "- Android APK: not built by this workflow"
+          } >> "$GITHUB_STEP_SUMMARY"
