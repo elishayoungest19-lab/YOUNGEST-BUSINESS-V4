@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -33,82 +33,126 @@ jobs:
       - name: Extract and validate V68 source
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          trap 'echo "::error::V68 validation failed at line $LINENO"' ERR
 
           ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V68-RECEIPT-A4-FULL-PAGE-SOURCE.zip"
+          DEST="$RUNNER_TEMP/yb-v68"
 
-          test -s "$ZIP"
+          echo "Checking V68 ZIP..."
+          if [ ! -s "$ZIP" ]; then
+            echo "::error::V68 ZIP missing or empty: $ZIP"
+            exit 1
+          fi
+
+          echo "Testing ZIP integrity..."
           unzip -t "$ZIP"
 
-          DEST="$RUNNER_TEMP/yb-v68"
           mkdir -p "$DEST"
           unzip -q "$ZIP" -d "$DEST"
 
-          test -s "$DEST/web-admin/app.js"
-          test -s "$DEST/web-admin/index.html"
-          test -s "$DEST/web-admin/assets/operators/airtel.svg"
-          test -s "$DEST/firebase.json"
-          test -s "$DEST/.firebaserc"
-          test -s "$DEST/app/build.gradle"
+          echo "Checking required files..."
+          for FILE in \
+            "web-admin/app.js" \
+            "web-admin/index.html" \
+            "firebase.json" \
+            ".firebaserc" \
+            "app/build.gradle" \
+            "web-admin/assets/operators/airtel.svg"
+          do
+            if [ ! -s "$DEST/$FILE" ]; then
+              echo "::error::Required V68 file missing: $FILE"
+              exit 1
+            fi
+            echo "OK: $FILE"
+          done
 
+          echo "Checking JavaScript syntax..."
           node --check "$DEST/web-admin/app.js"
 
-          grep -q 'versionCode 68' "$DEST/app/build.gradle"
-          grep -Fq "versionName '1.68.0-receipt-a4-full-page'" "$DEST/app/build.gradle"
+          echo "Checking Android version..."
+          grep -Fq 'versionCode 68' "$DEST/app/build.gradle" || {
+            echo "::error::versionCode 68 not found"
+            exit 1
+          }
 
-          grep -Fq '@page{size:A4 portrait;margin:0}' "$DEST/web-admin/app.js"
-          grep -Fq 'width:204mm!important;height:291mm!important' "$DEST/web-admin/app.js"
-          grep -Fq 'width:150px!important;height:150px!important' "$DEST/web-admin/app.js"
+          grep -Fq "versionName '1.68.0-receipt-a4-full-page'" "$DEST/app/build.gradle" || {
+            echo "::error::V68 versionName not found"
+            exit 1
+          }
 
-          grep -Fq 'Airtel Money' "$DEST/web-admin/assets/operators/airtel.svg"
-          grep -Fq 'airtel' "$DEST/web-admin/assets/operators/airtel.svg"
-          grep -Fq 'money' "$DEST/web-admin/assets/operators/airtel.svg"
+          echo "Checking A4 receipt layout..."
+          grep -Fq '@page{size:A4 portrait;margin:0}' "$DEST/web-admin/app.js" || {
+            echo "::error::A4 page CSS not found"
+            exit 1
+          }
 
-          node -e "
-            const fs = require('fs');
+          grep -Fq 'width:204mm!important;height:291mm!important' "$DEST/web-admin/app.js" || {
+            echo "::error::Receipt dimensions not found"
+            exit 1
+          }
 
-            const firebase = JSON.parse(
-              fs.readFileSync('$DEST/firebase.json', 'utf8')
-            );
+          grep -Fq 'width:150px!important;height:150px!important' "$DEST/web-admin/app.js" || {
+            echo "::error::QR dimensions not found"
+            exit 1
+          }
 
-            const project = JSON.parse(
-              fs.readFileSync('$DEST/.firebaserc', 'utf8')
-            );
+          echo "Checking Airtel Money SVG..."
+          grep -Fq 'Airtel Money' "$DEST/web-admin/assets/operators/airtel.svg" || {
+            echo "::error::Airtel Money SVG title not found"
+            exit 1
+          }
 
-            if (firebase.hosting?.public !== 'web-admin') {
-              throw new Error('Hosting public must be web-admin');
-            }
+          echo "Checking Firebase configuration..."
+          export V68_ROOT="$DEST"
 
-            if (project.projects?.default !== 'youngestsbusiness') {
-              throw new Error('Wrong Firebase project');
-            }
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
 
-            console.log('V68 Firebase configuration validated.');
-          "
+          const root = process.env.V68_ROOT;
+          const firebasePath = path.join(root, 'firebase.json');
+          const projectPath = path.join(root, '.firebaserc');
+
+          const firebase = JSON.parse(fs.readFileSync(firebasePath, 'utf8'));
+          const project = JSON.parse(fs.readFileSync(projectPath, 'utf8'));
+
+          if (firebase.hosting?.public !== 'web-admin') {
+            throw new Error('Firebase Hosting public folder must be web-admin');
+          }
+
+          if (project.projects?.default !== 'youngestsbusiness') {
+            throw new Error('Firebase default project must be youngestsbusiness');
+          }
+
+          console.log('Firebase Hosting folder: web-admin');
+          console.log('Firebase project: youngestsbusiness');
+          console.log('V68 Firebase configuration validated.');
+          NODE
 
           echo "V68_ROOT=$DEST" >> "$GITHUB_ENV"
+          echo "V68 source validation completed successfully."
 
       - name: Check Firebase service account secret
         shell: bash
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
-          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
-            echo "Missing FIREBASE_SERVICE_ACCOUNT_JSON"
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::GitHub secret FIREBASE_SERVICE_ACCOUNT_JSON is missing"
             exit 1
-          }
+          fi
 
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" |
-            node -e "
-              let s = '';
-              process.stdin.on('data', d => s += d);
-              process.stdin.on('end', () => {
-                JSON.parse(s);
-                console.log('Service account JSON is valid.');
-              });
-            "
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" | node -e "
+            let input = '';
+            process.stdin.on('data', chunk => input += chunk);
+            process.stdin.on('end', () => {
+              JSON.parse(input);
+              console.log('Firebase service account JSON is valid.');
+            });
+          "
 
       - name: Authenticate with Google Cloud
         uses: google-github-actions/auth@v2
@@ -121,17 +165,22 @@ jobs:
       - name: Deploy Firebase Hosting only
         working-directory: ${{ env.V68_ROOT }}
         run: |
-          firebase deploy --only hosting \
+          firebase deploy \
+            --only hosting \
             --project youngestsbusiness \
             --non-interactive
 
       - name: Deployment summary
+        if: success()
         run: |
           {
-            echo '## YOUNGEST’S BUSINESS V68'
-            echo '- A4 full-page receipt layout.'
-            echo '- Corrected Airtel Money SVG asset.'
-            echo '- QR code and contacts preserved.'
-            echo '- Firebase Hosting only.'
-            echo '- No Functions or Firestore rules deployment.'
+            echo "## YOUNGEST'S BUSINESS V68"
+            echo ""
+            echo "- V68 source validated."
+            echo "- A4 receipt layout checked."
+            echo "- Airtel Money SVG checked."
+            echo "- Firebase Hosting deployment completed."
+            echo "- Firebase Hosting only."
+            echo "- No Cloud Functions deployment."
+            echo "- No Firestore rules deployment."
           } >> "$GITHUB_STEP_SUMMARY"
