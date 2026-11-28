@@ -1,0 +1,127 @@
+name: YOUNGEST'S BUSINESS V67 - RECEIPT A4 LAYOUT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'YOUNGEST-BUSINESS-V67-RECEIPT-A4-LAYOUT-SOURCE.zip'
+      - '.github/workflows/yb-v67-receipt-a4-layout.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yb-v67-receipt-a4-layout-hosting
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract and validate V67 source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP="$GITHUB_WORKSPACE/YOUNGEST-BUSINESS-V67-RECEIPT-A4-LAYOUT-SOURCE.zip"
+
+          test -s "$ZIP"
+          unzip -t "$ZIP"
+
+          DEST="$RUNNER_TEMP/yb-v67"
+          mkdir -p "$DEST"
+          unzip -q "$ZIP" -d "$DEST"
+
+          test -s "$DEST/web-admin/app.js"
+          test -s "$DEST/web-admin/index.html"
+          test -s "$DEST/firebase.json"
+          test -s "$DEST/.firebaserc"
+
+          node --check "$DEST/web-admin/app.js"
+
+          grep -q 'versionCode 67' "$DEST/app/build.gradle"
+          grep -Fq "versionName '1.67.0-receipt-a4-layout'" "$DEST/app/build.gradle"
+
+          grep -Fq 'height:286mm' "$DEST/web-admin/app.js"
+          grep -Fq 'width:142px!important;height:142px!important' "$DEST/web-admin/app.js"
+
+          node -e "
+            const fs = require('fs');
+
+            const firebase = JSON.parse(
+              fs.readFileSync('$DEST/firebase.json', 'utf8')
+            );
+
+            const project = JSON.parse(
+              fs.readFileSync('$DEST/.firebaserc', 'utf8')
+            );
+
+            if (firebase.hosting?.public !== 'web-admin') {
+              throw new Error('Hosting public must be web-admin');
+            }
+
+            if (project.projects?.default !== 'youngestsbusiness') {
+              throw new Error('Wrong Firebase project');
+            }
+
+            console.log('V67 Firebase configuration validated.');
+          "
+
+          echo "V67_ROOT=$DEST" >> "$GITHUB_ENV"
+
+      - name: Check Firebase service account secret
+        shell: bash
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+
+          test -n "$FIREBASE_SERVICE_ACCOUNT_JSON" || {
+            echo 'Missing FIREBASE_SERVICE_ACCOUNT_JSON'
+            exit 1
+          }
+
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" |
+            node -e "
+              let s = '';
+              process.stdin.on('data', d => s += d);
+              process.stdin.on('end', () => {
+                JSON.parse(s);
+                console.log('Service account JSON is valid.');
+              });
+            "
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Firebase Hosting only
+        working-directory: ${{ env.V67_ROOT }}
+        run: |
+          firebase deploy --only hosting \
+            --project youngestsbusiness \
+            --non-interactive
+
+      - name: Deployment summary
+        run: |
+          {
+            echo '## YOUNGEST’S BUSINESS V67'
+            echo '- Enlarged and balanced the Mobile Money receipt for one A4 portrait page.'
+            echo '- Kept receipt fields, operator identity, QR code and contacts.'
+            echo '- Firebase Hosting only; no Functions or Firestore rules deployment.'
+          } >> "$GITHUB_STEP_SUMMARY"
